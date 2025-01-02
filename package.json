@@ -26,5 +26,54 @@
   "peerDependencies": {
     "form-data": "4.0.1",
     "whatwg-url": "7.1.0"
+  },
+  "pluginType": "elizaos:plugin:1.0.0",
+  "pluginParameters": {
+    "type": "object",
+    "required": ["solAddress", "slippage", "rpcUrl", "heliusApiKey", "birdeyeApiKey"],
+    "properties": {
+      "walletSecretKey": {
+        "type": "string",
+        "description": "Wallet secret key"
+      },
+      "walletPublicKey": {
+        "type": "string",
+        "description": "Wallet public key"
+      },
+      "walletSecretSalt": {
+        "type": "string",
+        "description": "Wallet secret salt"
+      },
+      "solAddress": {
+        "type": "string",
+        "description": "SOL address"
+      },
+      "slippage": {
+        "type": "string",
+        "description": "Slippage tolerance"
+      },
+      "rpcUrl": {
+        "type": "string",
+        "description": "RPC URL"
+      },
+      "heliusApiKey": {
+        "type": "string",
+        "description": "Helius API key"
+      },
+      "birdeyeApiKey": {
+        "type": "string",
+        "description": "Birdeye API key"
+      }
+    }
+  },
+  "pluginEnv": {
+    "WALLET_SECRET_KEY": "walletSecretKey",
+    "WALLET_PUBLIC_KEY": "walletPublicKey",
+    "WALLET_SECRET_SALT": "walletSecretSalt",
+    "SOL_ADDRESS": "solAddress",
+    "SLIPPAGE": "slippage",
+    "RPC_URL": "rpcUrl",
+    "HELIUS_API_KEY": "heliusApiKey",
+    "BIRDEYE_API_KEY": "birdeyeApiKey"
   }
 }
