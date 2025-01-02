@@ -4,6 +4,8 @@ import {
     Memory,
     Content,
     ModelClass,
+    State,
+    HandlerCallback
 } from "@elizaos/core";
 import { composeContext } from "@elizaos/core";
 import { generateText } from "@elizaos/core";
@@ -28,7 +30,19 @@ const take_order: Action = {
         const tickerRegex = /\b[A-Z]{1,5}\b/g;
         return tickerRegex.test(text);
     },
-    handler: async (runtime: IAgentRuntime, message: Memory) => {
+    handler: async ({
+        runtime,
+        message,
+        // state,
+        options,
+        callback
+    }: {
+        runtime: IAgentRuntime,
+        message: Memory,
+        state: State,
+        options: { [key: string]: unknown },
+        callback: HandlerCallback
+    }): Promise<boolean> => {
         const _text = (message.content as Content).text;
         const userId = message.userId;
 

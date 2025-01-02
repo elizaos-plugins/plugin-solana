@@ -276,13 +276,19 @@ export default {
     },
     description:
         "Create a new token and buy a specified amount using SOL. Requires deployer private key, token metadata, buy amount in SOL, priority fee, and allowOffCurve flag.",
-    handler: async (
+    handler: async ({
+        runtime,
+        message,
+        state,
+        options,
+        callback,
+    }: {
         runtime: IAgentRuntime,
         message: Memory,
         state: State,
-        _options: { [key: string]: unknown },
-        callback?: HandlerCallback
-    ): Promise<boolean> => {
+        options: { [key: string]: unknown },
+        callback: HandlerCallback
+    }): Promise<boolean> => {
         console.log("Starting CREATE_AND_BUY_TOKEN handler...");
 
         // Compose state if not provided

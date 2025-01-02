@@ -3,6 +3,8 @@ import {
     IAgentRuntime,
     Memory,
     type Action,
+    State,
+    HandlerCallback
 } from "@elizaos/core";
 import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import { getQuote } from "./swapUtils.ts";
@@ -57,10 +59,19 @@ export const executeSwapForDAO: Action = {
         return true;
     },
     description: "Perform a DAO token swap using execute_invoke.",
-    handler: async (
+    handler: async ({
+        runtime,
+        message,
+        state,
+        options,
+        callback
+    }: {
         runtime: IAgentRuntime,
-        message: Memory
-    ): Promise<boolean> => {
+        message: Memory,
+        state: State,
+        options: { [key: string]: unknown },
+        callback: HandlerCallback
+    }): Promise<boolean> => {
         const { inputToken, outputToken, amount } = message.content;
 
         try {

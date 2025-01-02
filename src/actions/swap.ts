@@ -175,13 +175,19 @@ export const executeSwap: Action = {
         return true;
     },
     description: "Perform a token swap.",
-    handler: async (
+    handler: async ({
+        runtime,
+        message,
+        state,
+        options,
+        callback,
+    }: {
         runtime: IAgentRuntime,
         message: Memory,
         state: State,
-        _options: { [key: string]: unknown },
-        callback?: HandlerCallback
-    ): Promise<boolean> => {
+        options: { [key: string]: unknown },
+        callback: HandlerCallback
+    }): Promise<boolean> => {
         // composeState
         if (!state) {
             state = (await runtime.composeState(message)) as State;
