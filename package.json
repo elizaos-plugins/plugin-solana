@@ -7,6 +7,7 @@
     "types": "dist/index.d.ts",
     "exports": {
         "./package.json": "./package.json",
+        "./plugin.json": "./plugin.json",
         ".": {
             "import": {
                 "@elizaos/source": "./src/index.ts",
@@ -19,9 +20,6 @@
         "dist"
     ],
     "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-trustdb": "workspace:*",
-        "@elizaos/plugin-tee": "workspace:*",
         "@coral-xyz/anchor": "0.30.1",
         "@solana/spl-token": "0.4.9",
         "@solana/web3.js": "1.95.8",
