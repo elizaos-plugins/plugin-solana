@@ -17,7 +17,8 @@
         }
     },
     "files": [
-        "dist"
+        "dist",
+        "plugin.json"
     ],
     "dependencies": {
         "@coral-xyz/anchor": "0.30.1",
