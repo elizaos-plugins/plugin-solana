@@ -44,44 +44,48 @@
     "agentConfig": {
         "pluginType": "elizaos:plugin:1.0.0",
         "pluginParameters": {
-            "SOLANA_PRIVATE_KEY": {
-                "type": "string"
+            "WALLET_SECRET_KEY": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Wallet secret key is required",
+                "optional": true
+            },
+            "WALLET_PUBLIC_KEY": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Wallet public key is required",
+                "optional": true
             },
             "WALLET_SECRET_SALT": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1,
+                "description": "Wallet secret salt is required",
+                "optional": true
             },
-    
-            "BASE_MINT": {
-                "type": "string"
+            "SOL_ADDRESS": {
+                "type": "string",
+                "minLength": 1,
+                "description": "SOL address is required"
             },
-            "BACKEND_URL": {
-                "type": "string"
+            "SLIPPAGE": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Slippage is required"
             },
-            "BACKEND_TOKEN": {
-                "type": "string"
-            },
-            "AMQP_URL": {
-                "type": "string"
-            },
-            "SONAR_BE": {
-                "type": "string"
-            },
-            "SONAR_BE_TOKEN": {
-                "type": "string"
-            },
-    
             "SOLANA_RPC_URL": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1,
+                "description": "RPC URL is required"
             },
-            
             "HELIUS_API_KEY": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1,
+                "description": "Helius API key is required"
             },
             "BIRDEYE_API_KEY": {
-                "type": "string"
-            },
-            "CODEX_API_KEY": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1,
+                "description": "Birdeye API key is required"
             }
         }
     }
