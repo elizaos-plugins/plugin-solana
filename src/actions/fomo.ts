@@ -2,21 +2,21 @@ import { generateImage, elizaLogger } from "@elizaos/core";
 import {
     Connection,
     Keypair,
-    PublicKey,
+    type PublicKey,
     VersionedTransaction,
 } from "@solana/web3.js";
-import { Fomo, PurchaseCurrency } from "fomo-sdk-solana";
+import { Fomo, type PurchaseCurrency } from "fomo-sdk-solana";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import bs58 from "bs58";
 import {
     settings,
-    ActionExample,
-    Content,
-    HandlerCallback,
-    IAgentRuntime,
-    Memory,
+    type ActionExample,
+    type Content,
+    type HandlerCallback,
+    type IAgentRuntime,
+    type Memory,
     ModelClass,
-    State,
+    type State,
     generateObject,
     composeContext,
     type Action,
@@ -518,7 +518,8 @@ export default {
         try {
             // Get private key from settings and create deployer keypair
             const privateKeyString =
-                runtime.getSetting("SOLANA_PRIVATE_KEY");
+                runtime.getSetting("SOLANA_PRIVATE_KEY") ??
+                runtime.getSetting("WALLET_PRIVATE_KEY");
             const secretKey = bs58.decode(privateKeyString);
             const deployerKeypair = Keypair.fromSecretKey(secretKey);
 

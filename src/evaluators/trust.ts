@@ -1,22 +1,22 @@
 import {
-    ActionExample,
+    type ActionExample,
     booleanFooter,
     composeContext,
-    Content,
+    type Content,
     elizaLogger,
-    Evaluator,
+    type Evaluator,
     generateObjectArray,
     generateTrueOrFalse,
-    IAgentRuntime,
-    Memory,
+    type IAgentRuntime,
+    type Memory,
     MemoryManager,
     ModelClass,
 } from "@elizaos/core";
-// import { TrustScoreDatabase } from "@elizaos/plugin-trustdb";
+import { TrustScoreDatabase } from "@elizaos/plugin-trustdb";
 import { Connection } from "@solana/web3.js";
 import { getWalletKey } from "../keypairUtils.ts";
 import { TokenProvider } from "../providers/token.ts";
-// import { TrustScoreManager } from "../providers/trustScoreProvider.ts";
+import { TrustScoreManager } from "../providers/trustScoreProvider.ts";
 import { WalletProvider } from "../providers/wallet.ts";
 
 const shouldProcessTemplate =
@@ -194,12 +194,12 @@ async function handler(runtime: IAgentRuntime, message: Memory) {
 
         // create the trust score manager
 
-        // const trustScoreDb = new TrustScoreDatabase(runtime.databaseAdapter.db);
-        // const trustScoreManager = new TrustScoreManager(
-        //     runtime,
-        //     tokenProvider,
-        //     trustScoreDb
-        // );
+        const trustScoreDb = new TrustScoreDatabase(runtime.databaseAdapter.db);
+        const trustScoreManager = new TrustScoreManager(
+            runtime,
+            tokenProvider,
+            trustScoreDb
+        );
 
         // get actors from the database
         const participants =
@@ -261,16 +261,16 @@ async function handler(runtime: IAgentRuntime, message: Memory) {
 
         switch (rec.type) {
             case "buy":
-                // // for now, lets just assume buy only, but we should implement
-                // await trustScoreManager.createTradePerformance(
-                //     runtime,
-                //     rec.contractAddress,
-                //     userId,
-                //     {
-                //         buy_amount: rec.buyAmount,
-                //         is_simulation: true,
-                //     }
-                // );
+                // for now, lets just assume buy only, but we should implement
+                await trustScoreManager.createTradePerformance(
+                    runtime,
+                    rec.contractAddress,
+                    userId,
+                    {
+                        buy_amount: rec.buyAmount,
+                        is_simulation: true,
+                    }
+                );
                 break;
             case "sell":
             case "dont_sell":
