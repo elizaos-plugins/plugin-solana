@@ -1,21 +1,49 @@
-// src/actions/swap.ts
+// src/providers/token.ts
 import {
-  composeContext,
-  generateObjectDeprecated,
-  ModelClass,
-  settings as settings2,
-  elizaLogger as elizaLogger4
+  elizaLogger as elizaLogger3,
+  settings
 } from "@elizaos/core";
-import { Connection as Connection3, VersionedTransaction as VersionedTransaction2 } from "@solana/web3.js";
+import NodeCache2 from "node-cache";
+import * as path from "path";
+
+// src/bignumber.ts
+import BigNumber from "bignumber.js";
+function toBN(value) {
+  return new BigNumber(value);
+}
+
+// src/providers/wallet.ts
+import {
+  elizaLogger as elizaLogger2
+} from "@elizaos/core";
+import { Connection, PublicKey as PublicKey2 } from "@solana/web3.js";
 import BigNumber2 from "bignumber.js";
+import NodeCache from "node-cache";
 
 // src/keypairUtils.ts
 import { Keypair, PublicKey } from "@solana/web3.js";
+import { DeriveKeyProvider, TEEMode } from "@elizaos/plugin-tee";
 import bs58 from "bs58";
 import { elizaLogger } from "@elizaos/core";
 async function getWalletKey(runtime, requirePrivateKey = true) {
+  const teeMode = runtime.getSetting("TEE_MODE") || TEEMode.OFF;
+  if (teeMode !== TEEMode.OFF) {
+    const walletSecretSalt = runtime.getSetting("WALLET_SECRET_SALT");
+    if (!walletSecretSalt) {
+      throw new Error(
+        "WALLET_SECRET_SALT required when TEE_MODE is enabled"
+      );
+    }
+    const deriveKeyProvider = new DeriveKeyProvider(teeMode);
+    const deriveKeyResult = await deriveKeyProvider.deriveEd25519Keypair(
+      walletSecretSalt,
+      "solana",
+      runtime.agentId
+    );
+    return requirePrivateKey ? { keypair: deriveKeyResult.keypair } : { publicKey: deriveKeyResult.keypair.publicKey };
+  }
   if (requirePrivateKey) {
-    const privateKeyString = runtime.getSetting("SOLANA_PRIVATE_KEY");
+    const privateKeyString = runtime.getSetting("SOLANA_PRIVATE_KEY") ?? runtime.getSetting("WALLET_PRIVATE_KEY");
     if (!privateKeyString) {
       throw new Error("Private key not found in settings");
     }
@@ -36,7 +64,7 @@ async function getWalletKey(runtime, requirePrivateKey = true) {
       }
     }
   } else {
-    const publicKeyString = runtime.getSetting("SOLANA_PUBLIC_KEY");
+    const publicKeyString = runtime.getSetting("SOLANA_PUBLIC_KEY") ?? runtime.getSetting("WALLET_PUBLIC_KEY");
     if (!publicKeyString) {
       throw new Error("Public key not found in settings");
     }
@@ -45,12 +73,6 @@ async function getWalletKey(runtime, requirePrivateKey = true) {
 }
 
 // src/providers/wallet.ts
-import {
-  elizaLogger as elizaLogger2
-} from "@elizaos/core";
-import { Connection, PublicKey as PublicKey2 } from "@solana/web3.js";
-import BigNumber from "bignumber.js";
-import NodeCache from "node-cache";
 var PROVIDER_CONFIG = {
   BIRDEYE_API: "https://public-api.birdeye.so",
   MAX_RETRIES: 3,
@@ -124,14 +146,14 @@ var WalletProvider = class {
         );
         if (walletData?.success && walletData?.data) {
           const data = walletData.data;
-          const totalUsd = new BigNumber(data.totalUsd.toString());
+          const totalUsd = new BigNumber2(data.totalUsd.toString());
           const prices = await this.fetchPrices(runtime);
-          const solPriceInUSD = new BigNumber(
+          const solPriceInUSD = new BigNumber2(
             prices.solana.usd.toString()
           );
           const items2 = data.items.map((item) => ({
             ...item,
-            valueSol: new BigNumber(item.valueUsd || 0).div(solPriceInUSD).toFixed(6),
+            valueSol: new BigNumber2(item.valueUsd || 0).div(solPriceInUSD).toFixed(6),
             name: item.name || "Unknown",
             symbol: item.symbol || "Unknown",
             priceUsd: item.priceUsd || "0",
@@ -141,7 +163,7 @@ var WalletProvider = class {
             totalUsd: totalUsd.toString(),
             totalSol: totalUsd.div(solPriceInUSD).toFixed(6),
             items: items2.sort(
-              (a, b) => new BigNumber(b.valueUsd).minus(new BigNumber(a.valueUsd)).toNumber()
+              (a, b) => new BigNumber2(b.valueUsd).minus(new BigNumber2(a.valueUsd)).toNumber()
             )
           };
           this.cache.set(cacheKey, portfolio2);
@@ -217,7 +239,7 @@ var WalletProvider = class {
         throw new Error("No portfolio data available");
       }
       const prices = await this.fetchPrices(runtime);
-      const solPriceInUSD = new BigNumber(prices.solana.usd.toString());
+      const solPriceInUSD = new BigNumber2(prices.solana.usd.toString());
       const items = data.map((item) => {
         return {
           name: "Unknown",
@@ -232,15 +254,15 @@ var WalletProvider = class {
         };
       });
       const totalUsd = items.reduce(
-        (sum, item) => sum.plus(new BigNumber(item.valueUsd)),
-        new BigNumber(0)
+        (sum, item) => sum.plus(new BigNumber2(item.valueUsd)),
+        new BigNumber2(0)
       );
       const totalSol = totalUsd.div(solPriceInUSD);
       const portfolio = {
         totalUsd: totalUsd.toFixed(6),
         totalSol: totalSol.toFixed(6),
         items: items.sort(
-          (a, b) => new BigNumber(b.valueUsd).minus(new BigNumber(a.valueUsd)).toNumber()
+          (a, b) => new BigNumber2(b.valueUsd).minus(new BigNumber2(a.valueUsd)).toNumber()
         )
       };
       await this.cache.set(cacheKey, portfolio, 60 * 1e3);
@@ -298,32 +320,32 @@ var WalletProvider = class {
     output += `Wallet Address: ${this.walletPublicKey.toBase58()}
 
 `;
-    const totalUsdFormatted = new BigNumber(portfolio.totalUsd).toFixed(2);
+    const totalUsdFormatted = new BigNumber2(portfolio.totalUsd).toFixed(2);
     const totalSolFormatted = portfolio.totalSol;
     output += `Total Value: $${totalUsdFormatted} (${totalSolFormatted} SOL)
 
 `;
     output += "Token Balances:\n";
     const nonZeroItems = portfolio.items.filter(
-      (item) => new BigNumber(item.uiAmount).isGreaterThan(0)
+      (item) => new BigNumber2(item.uiAmount).isGreaterThan(0)
     );
     if (nonZeroItems.length === 0) {
       output += "No tokens found with non-zero balance\n";
     } else {
       for (const item of nonZeroItems) {
-        const valueUsd = new BigNumber(item.valueUsd).toFixed(2);
-        output += `${item.name} (${item.symbol}): ${new BigNumber(
+        const valueUsd = new BigNumber2(item.valueUsd).toFixed(2);
+        output += `${item.name} (${item.symbol}): ${new BigNumber2(
           item.uiAmount
         ).toFixed(6)} ($${valueUsd} | ${item.valueSol} SOL)
 `;
       }
     }
     output += "\nMarket Prices:\n";
-    output += `SOL: $${new BigNumber(prices.solana.usd).toFixed(2)}
+    output += `SOL: $${new BigNumber2(prices.solana.usd).toFixed(2)}
 `;
-    output += `BTC: $${new BigNumber(prices.bitcoin.usd).toFixed(2)}
+    output += `BTC: $${new BigNumber2(prices.bitcoin.usd).toFixed(2)}
 `;
-    output += `ETH: $${new BigNumber(prices.ethereum.usd).toFixed(2)}
+    output += `ETH: $${new BigNumber2(prices.ethereum.usd).toFixed(2)}
 `;
     return output;
   }
@@ -372,1365 +394,8 @@ var walletProvider = {
   }
 };
 
-// src/actions/swapUtils.ts
-import { getAssociatedTokenAddress } from "@solana/spl-token";
-import {
-  Connection as Connection2,
-  PublicKey as PublicKey3,
-  VersionedTransaction
-} from "@solana/web3.js";
-import { settings, elizaLogger as elizaLogger3 } from "@elizaos/core";
-var solAddress = settings.SOL_ADDRESS;
-var SLIPPAGE = settings.SLIPPAGE;
-var connection = new Connection2(
-  settings.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com"
-);
-async function getTokenDecimals(connection3, mintAddress) {
-  const mintPublicKey = new PublicKey3(mintAddress);
-  const tokenAccountInfo = await connection3.getParsedAccountInfo(mintPublicKey);
-  if (tokenAccountInfo.value && typeof tokenAccountInfo.value.data === "object" && "parsed" in tokenAccountInfo.value.data) {
-    const parsedInfo = tokenAccountInfo.value.data.parsed?.info;
-    if (parsedInfo && typeof parsedInfo.decimals === "number") {
-      return parsedInfo.decimals;
-    }
-  }
-  throw new Error("Unable to fetch token decimals");
-}
-async function getQuote(connection3, baseToken, outputToken, amount) {
-  const decimals = await getTokenDecimals(connection3, baseToken);
-  const adjustedAmount = amount * 10 ** decimals;
-  const quoteResponse = await fetch(
-    `https://quote-api.jup.ag/v6/quote?inputMint=${baseToken}&outputMint=${outputToken}&amount=${adjustedAmount}&slippageBps=50`
-  );
-  const swapTransaction = await quoteResponse.json();
-  const swapTransactionBuf = Buffer.from(swapTransaction, "base64");
-  return new Uint8Array(swapTransactionBuf);
-}
-
-// src/actions/swap.ts
-async function swapToken(connection3, walletPublicKey, inputTokenCA, outputTokenCA, amount) {
-  try {
-    const decimals = inputTokenCA === settings2.SOL_ADDRESS ? new BigNumber2(9) : new BigNumber2(
-      await getTokenDecimals(connection3, inputTokenCA)
-    );
-    elizaLogger4.log("Decimals:", decimals.toString());
-    const amountBN = new BigNumber2(amount);
-    const adjustedAmount = amountBN.multipliedBy(
-      new BigNumber2(10).pow(decimals)
-    );
-    elizaLogger4.log("Fetching quote with params:", {
-      inputMint: inputTokenCA,
-      outputMint: outputTokenCA,
-      amount: adjustedAmount
-    });
-    const quoteResponse = await fetch(
-      `https://quote-api.jup.ag/v6/quote?inputMint=${inputTokenCA}&outputMint=${outputTokenCA}&amount=${adjustedAmount}&dynamicSlippage=true&maxAccounts=64`
-    );
-    const quoteData = await quoteResponse.json();
-    if (!quoteData || quoteData.error) {
-      elizaLogger4.error("Quote error:", quoteData);
-      throw new Error(
-        `Failed to get quote: ${quoteData?.error || "Unknown error"}`
-      );
-    }
-    elizaLogger4.log("Quote received:", quoteData);
-    const swapRequestBody = {
-      quoteResponse: quoteData,
-      userPublicKey: walletPublicKey.toBase58(),
-      dynamicComputeUnitLimit: true,
-      dynamicSlippage: true,
-      priorityLevelWithMaxLamports: {
-        maxLamports: 4e6,
-        priorityLevel: "veryHigh"
-      }
-    };
-    elizaLogger4.log("Requesting swap with body:", swapRequestBody);
-    const swapResponse = await fetch("https://quote-api.jup.ag/v6/swap", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(swapRequestBody)
-    });
-    const swapData = await swapResponse.json();
-    if (!swapData || !swapData.swapTransaction) {
-      elizaLogger4.error("Swap error:", swapData);
-      throw new Error(
-        `Failed to get swap transaction: ${swapData?.error || "No swap transaction returned"}`
-      );
-    }
-    elizaLogger4.log("Swap transaction received");
-    return swapData;
-  } catch (error) {
-    elizaLogger4.error("Error in swapToken:", error);
-    throw error;
-  }
-}
-var swapTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-
-Example response:
-\`\`\`json
-{
-    "inputTokenSymbol": "SOL",
-    "outputTokenSymbol": "USDC",
-    "inputTokenCA": "So11111111111111111111111111111111111111112",
-    "outputTokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    "amount": 1.5
-}
-\`\`\`
-
-{{recentMessages}}
-
-Given the recent messages and wallet information below:
-
-{{walletInfo}}
-
-Extract the following information about the requested token swap:
-- Input token symbol (the token being sold)
-- Output token symbol (the token being bought)
-- Input token contract address if provided
-- Output token contract address if provided
-- Amount to swap
-
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined. The result should be a valid JSON object with the following schema:
-\`\`\`json
-{
-    "inputTokenSymbol": string | null,
-    "outputTokenSymbol": string | null,
-    "inputTokenCA": string | null,
-    "outputTokenCA": string | null,
-    "amount": number | string | null
-}
-\`\`\``;
-async function getTokensInWallet(runtime) {
-  const { publicKey } = await getWalletKey(runtime, false);
-  const walletProvider2 = new WalletProvider(
-    new Connection3("https://api.mainnet-beta.solana.com"),
-    publicKey
-  );
-  const walletInfo = await walletProvider2.fetchPortfolioValue(runtime);
-  const items = walletInfo.items;
-  return items;
-}
-async function getTokenFromWallet(runtime, tokenSymbol) {
-  try {
-    const items = await getTokensInWallet(runtime);
-    const token = items.find((item) => item.symbol === tokenSymbol);
-    if (token) {
-      return token.address;
-    } else {
-      return null;
-    }
-  } catch (error) {
-    elizaLogger4.error("Error checking token in wallet:", error);
-    return null;
-  }
-}
-var executeSwap = {
-  name: "EXECUTE_SWAP",
-  similes: ["SWAP_TOKENS", "TOKEN_SWAP", "TRADE_TOKENS", "EXCHANGE_TOKENS"],
-  validate: async (runtime, message) => {
-    elizaLogger4.log("Message:", message);
-    return true;
-  },
-  description: "Perform a token swap.",
-  handler: async (runtime, message, state, _options, callback) => {
-    if (!state) {
-      state = await runtime.composeState(message);
-    } else {
-      state = await runtime.updateRecentMessageState(state);
-    }
-    const walletInfo = await walletProvider.get(runtime, message, state);
-    state.walletInfo = walletInfo;
-    const swapContext = composeContext({
-      state,
-      template: swapTemplate
-    });
-    const response = await generateObjectDeprecated({
-      runtime,
-      context: swapContext,
-      modelClass: ModelClass.LARGE
-    });
-    elizaLogger4.log("Response:", response);
-    if (response.inputTokenSymbol?.toUpperCase() === "SOL") {
-      response.inputTokenCA = settings2.SOL_ADDRESS;
-    }
-    if (response.outputTokenSymbol?.toUpperCase() === "SOL") {
-      response.outputTokenCA = settings2.SOL_ADDRESS;
-    }
-    if (!response.inputTokenCA && response.inputTokenSymbol) {
-      elizaLogger4.log(
-        `Attempting to resolve CA for input token symbol: ${response.inputTokenSymbol}`
-      );
-      response.inputTokenCA = await getTokenFromWallet(
-        runtime,
-        response.inputTokenSymbol
-      );
-      if (response.inputTokenCA) {
-        elizaLogger4.log(
-          `Resolved inputTokenCA: ${response.inputTokenCA}`
-        );
-      } else {
-        elizaLogger4.log(
-          "No contract addresses provided, skipping swap"
-        );
-        const responseMsg = {
-          text: "I need the contract addresses to perform the swap"
-        };
-        callback?.(responseMsg);
-        return true;
-      }
-    }
-    if (!response.outputTokenCA && response.outputTokenSymbol) {
-      elizaLogger4.log(
-        `Attempting to resolve CA for output token symbol: ${response.outputTokenSymbol}`
-      );
-      response.outputTokenCA = await getTokenFromWallet(
-        runtime,
-        response.outputTokenSymbol
-      );
-      if (response.outputTokenCA) {
-        elizaLogger4.log(
-          `Resolved outputTokenCA: ${response.outputTokenCA}`
-        );
-      } else {
-        elizaLogger4.log(
-          "No contract addresses provided, skipping swap"
-        );
-        const responseMsg = {
-          text: "I need the contract addresses to perform the swap"
-        };
-        callback?.(responseMsg);
-        return true;
-      }
-    }
-    if (!response.amount) {
-      elizaLogger4.log("No amount provided, skipping swap");
-      const responseMsg = {
-        text: "I need the amount to perform the swap"
-      };
-      callback?.(responseMsg);
-      return true;
-    }
-    if (!response.amount) {
-      elizaLogger4.log("Amount is not a number, skipping swap");
-      const responseMsg = {
-        text: "The amount must be a number"
-      };
-      callback?.(responseMsg);
-      return true;
-    }
-    try {
-      const connection3 = new Connection3(
-        "https://api.mainnet-beta.solana.com"
-      );
-      const { publicKey: walletPublicKey } = await getWalletKey(
-        runtime,
-        false
-      );
-      elizaLogger4.log("Wallet Public Key:", walletPublicKey);
-      elizaLogger4.log("inputTokenSymbol:", response.inputTokenCA);
-      elizaLogger4.log("outputTokenSymbol:", response.outputTokenCA);
-      elizaLogger4.log("amount:", response.amount);
-      const swapResult = await swapToken(
-        connection3,
-        walletPublicKey,
-        response.inputTokenCA,
-        response.outputTokenCA,
-        response.amount
-      );
-      elizaLogger4.log("Deserializing transaction...");
-      const transactionBuf = Buffer.from(
-        swapResult.swapTransaction,
-        "base64"
-      );
-      const transaction = VersionedTransaction2.deserialize(transactionBuf);
-      elizaLogger4.log("Preparing to sign transaction...");
-      elizaLogger4.log("Creating keypair...");
-      const { keypair } = await getWalletKey(runtime, true);
-      if (keypair.publicKey.toBase58() !== walletPublicKey.toBase58()) {
-        throw new Error(
-          "Generated public key doesn't match expected public key"
-        );
-      }
-      elizaLogger4.log("Signing transaction...");
-      transaction.sign([keypair]);
-      elizaLogger4.log("Sending transaction...");
-      const latestBlockhash = await connection3.getLatestBlockhash();
-      const txid = await connection3.sendTransaction(transaction, {
-        skipPreflight: false,
-        maxRetries: 3,
-        preflightCommitment: "confirmed"
-      });
-      elizaLogger4.log("Transaction sent:", txid);
-      const confirmation = await connection3.confirmTransaction(
-        {
-          signature: txid,
-          blockhash: latestBlockhash.blockhash,
-          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight
-        },
-        "confirmed"
-      );
-      if (confirmation.value.err) {
-        throw new Error(
-          `Transaction failed: ${confirmation.value.err}`
-        );
-      }
-      if (confirmation.value.err) {
-        throw new Error(
-          `Transaction failed: ${confirmation.value.err}`
-        );
-      }
-      elizaLogger4.log("Swap completed successfully!");
-      elizaLogger4.log(`Transaction ID: ${txid}`);
-      const responseMsg = {
-        text: `Swap completed successfully! Transaction ID: ${txid}`
-      };
-      callback?.(responseMsg);
-      return true;
-    } catch (error) {
-      elizaLogger4.error("Error during token swap:", error);
-      return false;
-    }
-  },
-  examples: [
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          inputTokenSymbol: "SOL",
-          outputTokenSymbol: "USDC",
-          amount: 0.1
-        }
-      },
-      {
-        user: "{{user2}}",
-        content: {
-          text: "Swapping 0.1 SOL for USDC...",
-          action: "TOKEN_SWAP"
-        }
-      },
-      {
-        user: "{{user2}}",
-        content: {
-          text: "Swap completed successfully! Transaction ID: ..."
-        }
-      }
-    ]
-    // Add more examples as needed
-  ]
-};
-
-// src/actions/takeOrder.ts
-import {
-  ModelClass as ModelClass2,
-  composeContext as composeContext2,
-  generateText
-} from "@elizaos/core";
-var take_order = {
-  name: "TAKE_ORDER",
-  similes: ["BUY_ORDER", "PLACE_ORDER"],
-  description: "Records a buy order based on the user's conviction level.",
-  examples: [],
-  validate: async (runtime, message) => {
-    const text = message.content.text;
-    const tickerRegex = /\b[A-Z]{1,5}\b/g;
-    return tickerRegex.test(text);
-  },
-  handler: async (runtime, message) => {
-    const _text = message.content.text;
-    const userId = message.userId;
-    const template = `
-
-// CLAUDE TODO: Put the usual conversation context here
-
-Ticker is: {{ticker}}
-Contract address is: {{contractAddress}}
-
-Determine if the user is trying to shill the ticker. if they are, respond with empty conviction, ticker and contractAddress.
-
-// CLAUDE TODO: output a JSON block with the following fields:
-// - reasoning: string
-// - conviction: negative, low, medium, high
-// - ticker: string (extract from CA so we have context)
-// - contractAddress: string
-`;
-    let ticker, contractAddress;
-    if (!ticker || !contractAddress) {
-      return {
-        text: "Ticker and CA?"
-      };
-    }
-    const state = await runtime.composeState(message);
-    const context = composeContext2({
-      state: {
-        ...state,
-        ticker,
-        contractAddress
-      },
-      template
-    });
-    const convictionResponse = await generateText({
-      runtime,
-      context,
-      modelClass: ModelClass2.LARGE
-    });
-    const convictionResponseJson = JSON.parse(convictionResponse);
-    const conviction = convictionResponseJson.conviction;
-    let buyAmount = 0;
-    if (conviction === "low") {
-      buyAmount = 20;
-    } else if (conviction === "medium") {
-      buyAmount = 50;
-    } else if (conviction === "high") {
-      buyAmount = 100;
-    }
-    const currentPrice = 100;
-    const order = {
-      userId,
-      ticker: ticker || "",
-      contractAddress,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      buyAmount,
-      price: currentPrice
-    };
-    const orderBookPath = runtime.getSetting("orderBookPath") ?? "solana/orderBook.json";
-    const orderBook = [];
-    const cachedOrderBook = await runtime.cacheManager.get(orderBookPath);
-    if (cachedOrderBook) {
-      orderBook.push(...cachedOrderBook);
-    }
-    orderBook.push(order);
-    await runtime.cacheManager.set(orderBookPath, orderBook);
-    return {
-      text: `Recorded a ${conviction} conviction buy order for ${ticker} (${contractAddress}) with an amount of ${buyAmount} at the price of ${currentPrice}.`
-    };
-  }
-};
-var takeOrder_default = take_order;
-
-// src/actions/pumpfun.ts
-import { AnchorProvider } from "@coral-xyz/anchor";
-import { Wallet } from "@coral-xyz/anchor";
-import { generateImage } from "@elizaos/core";
-import { Connection as Connection4, Keypair as Keypair3 } from "@solana/web3.js";
-import { PumpFunSDK } from "pumpdotfun-sdk";
-import { getAssociatedTokenAddressSync } from "@solana/spl-token";
-import {
-  settings as settings3,
-  ModelClass as ModelClass3,
-  generateObjectDeprecated as generateObjectDeprecated2,
-  composeContext as composeContext3,
-  elizaLogger as elizaLogger5
-} from "@elizaos/core";
-import * as fs from "fs";
-import * as path from "path";
-function isCreateAndBuyContent(runtime, content) {
-  elizaLogger5.log("Content for create & buy", content);
-  return typeof content.tokenMetadata === "object" && content.tokenMetadata !== null && typeof content.tokenMetadata.name === "string" && typeof content.tokenMetadata.symbol === "string" && typeof content.tokenMetadata.description === "string" && typeof content.tokenMetadata.image_description === "string" && (typeof content.buyAmountSol === "string" || typeof content.buyAmountSol === "number");
-}
-var createAndBuyToken = async ({
-  deployer,
-  mint,
-  tokenMetadata,
-  buyAmountSol,
-  priorityFee,
-  allowOffCurve,
-  commitment = "confirmed",
-  sdk,
-  connection: connection3,
-  slippage
-}) => {
-  const createResults = await sdk.createAndBuy(
-    deployer,
-    mint,
-    tokenMetadata,
-    buyAmountSol,
-    BigInt(slippage),
-    priorityFee,
-    commitment
-  );
-  elizaLogger5.log("Create Results: ", createResults);
-  if (createResults.success) {
-    elizaLogger5.log(
-      "Success:",
-      `https://pump.fun/${mint.publicKey.toBase58()}`
-    );
-    const ata = getAssociatedTokenAddressSync(
-      mint.publicKey,
-      deployer.publicKey,
-      allowOffCurve
-    );
-    const balance = await connection3.getTokenAccountBalance(
-      ata,
-      "processed"
-    );
-    const amount = balance.value.uiAmount;
-    if (amount === null) {
-      elizaLogger5.log(
-        `${deployer.publicKey.toBase58()}:`,
-        "No Account Found"
-      );
-    } else {
-      elizaLogger5.log(`${deployer.publicKey.toBase58()}:`, amount);
-    }
-    return {
-      success: true,
-      ca: mint.publicKey.toBase58(),
-      creator: deployer.publicKey.toBase58()
-    };
-  } else {
-    elizaLogger5.log("Create and Buy failed");
-    return {
-      success: false,
-      ca: mint.publicKey.toBase58(),
-      error: createResults.error || "Transaction failed"
-    };
-  }
-};
-var promptConfirmation = async () => {
-  return true;
-};
-var pumpfunTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-
-Example response:
-\`\`\`json
-{
-    "tokenMetadata": {
-        "name": "Test Token",
-        "symbol": "TEST",
-        "description": "A test token",
-        "image_description": "create an image of a rabbit"
-    },
-    "buyAmountSol": "0.00069"
-}
-\`\`\`
-
-{{recentMessages}}
-
-Given the recent messages, extract or generate (come up with if not included) the following information about the requested token creation:
-- Token name
-- Token symbol
-- Token description
-- Token image description
-- Amount of SOL to buy
-
-Respond with a JSON markdown block containing only the extracted values.`;
-var pumpfun_default = {
-  name: "CREATE_AND_BUY_TOKEN",
-  similes: ["CREATE_AND_PURCHASE_TOKEN", "DEPLOY_AND_BUY_TOKEN"],
-  validate: async (_runtime, _message) => {
-    return true;
-  },
-  description: "Create a new token and buy a specified amount using SOL. Requires deployer private key, token metadata, buy amount in SOL, priority fee, and allowOffCurve flag.",
-  handler: async (runtime, message, state, _options, callback) => {
-    elizaLogger5.log("Starting CREATE_AND_BUY_TOKEN handler...");
-    if (!state) {
-      state = await runtime.composeState(message);
-    } else {
-      state = await runtime.updateRecentMessageState(state);
-    }
-    const walletInfo = await walletProvider.get(runtime, message, state);
-    state.walletInfo = walletInfo;
-    const pumpContext = composeContext3({
-      state,
-      template: pumpfunTemplate
-    });
-    const content = await generateObjectDeprecated2({
-      runtime,
-      context: pumpContext,
-      modelClass: ModelClass3.LARGE
-    });
-    if (!isCreateAndBuyContent(runtime, content)) {
-      elizaLogger5.error(
-        "Invalid content for CREATE_AND_BUY_TOKEN action."
-      );
-      return false;
-    }
-    const { tokenMetadata, buyAmountSol } = content;
-    const imageResult = await generateImage(
-      {
-        prompt: `logo for ${tokenMetadata.name} (${tokenMetadata.symbol}) token - ${tokenMetadata.description}`,
-        width: 256,
-        height: 256,
-        count: 1
-      },
-      runtime
-    );
-    tokenMetadata.image_description = imageResult.data[0].replace(
-      /^data:image\/[a-z]+;base64,/,
-      ""
-    );
-    const base64Data = tokenMetadata.image_description;
-    const outputPath = path.join(
-      process.cwd(),
-      `generated_image_${Date.now()}.txt`
-    );
-    fs.writeFileSync(outputPath, base64Data);
-    elizaLogger5.log(`Base64 data saved to: ${outputPath}`);
-    const byteCharacters = atob(base64Data);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: "image/png" });
-    const fullTokenMetadata = {
-      name: tokenMetadata.name,
-      symbol: tokenMetadata.symbol,
-      description: tokenMetadata.description,
-      file: blob
-    };
-    const priorityFee = {
-      unitLimit: 1e8,
-      unitPrice: 1e5
-    };
-    const slippage = "2000";
-    try {
-      const { keypair: deployerKeypair } = await getWalletKey(
-        runtime,
-        true
-      );
-      const mintKeypair = Keypair3.generate();
-      elizaLogger5.log(
-        `Generated mint address: ${mintKeypair.publicKey.toBase58()}`
-      );
-      const connection3 = new Connection4(settings3.SOLANA_RPC_URL, {
-        commitment: "confirmed",
-        confirmTransactionInitialTimeout: 5e5,
-        // 120 seconds
-        wsEndpoint: settings3.SOLANA_RPC_URL.replace("https", "wss")
-      });
-      const wallet = new Wallet(deployerKeypair);
-      const provider = new AnchorProvider(connection3, wallet, {
-        commitment: "confirmed"
-      });
-      const sdk = new PumpFunSDK(provider);
-      const createAndBuyConfirmation = await promptConfirmation();
-      if (!createAndBuyConfirmation) {
-        elizaLogger5.log("Create and buy token canceled by user");
-        return false;
-      }
-      const lamports = Math.floor(Number(buyAmountSol) * 1e9);
-      elizaLogger5.log("Executing create and buy transaction...");
-      const result = await createAndBuyToken({
-        deployer: deployerKeypair,
-        mint: mintKeypair,
-        tokenMetadata: fullTokenMetadata,
-        buyAmountSol: BigInt(lamports),
-        priorityFee,
-        allowOffCurve: false,
-        sdk,
-        connection: connection3,
-        slippage
-      });
-      if (callback) {
-        if (result.success) {
-          callback({
-            text: `Token ${tokenMetadata.name} (${tokenMetadata.symbol}) created successfully!
-Contract Address: ${result.ca}
-Creator: ${result.creator}
-View at: https://pump.fun/${result.ca}`,
-            content: {
-              tokenInfo: {
-                symbol: tokenMetadata.symbol,
-                address: result.ca,
-                creator: result.creator,
-                name: tokenMetadata.name,
-                description: tokenMetadata.description,
-                timestamp: Date.now()
-              }
-            }
-          });
-        } else {
-          callback({
-            text: `Failed to create token: ${result.error}
-Attempted mint address: ${result.ca}`,
-            content: {
-              error: result.error,
-              mintAddress: result.ca
-            }
-          });
-        }
-      }
-      const successMessage = `Token created and purchased successfully! View at: https://pump.fun/${mintKeypair.publicKey.toBase58()}`;
-      elizaLogger5.log(successMessage);
-      return result.success;
-    } catch (error) {
-      if (callback) {
-        callback({
-          text: `Error during token creation: ${error.message}`,
-          content: { error: error.message }
-        });
-      }
-      return false;
-    }
-  },
-  examples: [
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          text: "Create a new token called GLITCHIZA with symbol GLITCHIZA and generate a description about it on pump.fun. Also come up with a description for it to use for image generation .buy 0.00069 SOL worth."
-        }
-      },
-      {
-        user: "{{user2}}",
-        content: {
-          text: "Token GLITCHIZA (GLITCHIZA) created successfully on pump.fun!\nContract Address: 3kD5DN4bbA3nykb1abjS66VF7cYZkKdirX8bZ6ShJjBB\nCreator: 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa\nView at: https://pump.fun/EugPwuZ8oUMWsYHeBGERWvELfLGFmA1taDtmY8uMeX6r",
-          action: "CREATE_AND_BUY_TOKEN",
-          content: {
-            tokenInfo: {
-              symbol: "GLITCHIZA",
-              address: "EugPwuZ8oUMWsYHeBGERWvELfLGFmA1taDtmY8uMeX6r",
-              creator: "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
-              name: "GLITCHIZA",
-              description: "A GLITCHIZA token"
-            }
-          }
-        }
-      }
-    ]
-  ]
-};
-
-// src/actions/fomo.ts
-import { generateImage as generateImage2, elizaLogger as elizaLogger6 } from "@elizaos/core";
-import {
-  Connection as Connection5,
-  Keypair as Keypair4,
-  VersionedTransaction as VersionedTransaction3
-} from "@solana/web3.js";
-import { Fomo } from "fomo-sdk-solana";
-import { getAssociatedTokenAddressSync as getAssociatedTokenAddressSync2 } from "@solana/spl-token";
-import bs582 from "bs58";
-import {
-  settings as settings4,
-  ModelClass as ModelClass4,
-  generateObject,
-  composeContext as composeContext4
-} from "@elizaos/core";
-function isCreateAndBuyContentForFomo(content) {
-  elizaLogger6.log("Content for create & buy", content);
-  return typeof content.tokenMetadata === "object" && content.tokenMetadata !== null && typeof content.tokenMetadata.name === "string" && typeof content.tokenMetadata.symbol === "string" && typeof content.tokenMetadata.description === "string" && typeof content.tokenMetadata.image_description === "string" && (typeof content.buyAmountSol === "string" || typeof content.buyAmountSol === "number") && typeof content.requiredLiquidity === "number";
-}
-var createAndBuyToken2 = async ({
-  deployer,
-  mint,
-  tokenMetadata,
-  buyAmountSol,
-  priorityFee,
-  requiredLiquidity = 85,
-  allowOffCurve,
-  commitment = "confirmed",
-  fomo,
-  connection: connection3
-}) => {
-  const { transaction: versionedTx } = await fomo.createToken(
-    deployer.publicKey,
-    tokenMetadata.name,
-    tokenMetadata.symbol,
-    tokenMetadata.uri,
-    priorityFee,
-    bs582.encode(mint.secretKey),
-    requiredLiquidity,
-    Number(buyAmountSol) / 10 ** 9
-  );
-  const { blockhash, lastValidBlockHeight } = await connection3.getLatestBlockhash();
-  versionedTx.message.recentBlockhash = blockhash;
-  versionedTx.sign([mint]);
-  const serializedTransaction = versionedTx.serialize();
-  const serializedTransactionBase64 = Buffer.from(
-    serializedTransaction
-  ).toString("base64");
-  const deserializedTx = VersionedTransaction3.deserialize(
-    Buffer.from(serializedTransactionBase64, "base64")
-  );
-  const txid = await connection3.sendTransaction(deserializedTx, {
-    skipPreflight: false,
-    maxRetries: 3,
-    preflightCommitment: "confirmed"
-  });
-  elizaLogger6.log("Transaction sent:", txid);
-  const confirmation = await connection3.confirmTransaction(
-    {
-      signature: txid,
-      blockhash,
-      lastValidBlockHeight
-    },
-    commitment
-  );
-  if (!confirmation.value.err) {
-    elizaLogger6.log(
-      "Success:",
-      `https://fomo.fund/token/${mint.publicKey.toBase58()}`
-    );
-    const ata = getAssociatedTokenAddressSync2(
-      mint.publicKey,
-      deployer.publicKey,
-      allowOffCurve
-    );
-    const balance = await connection3.getTokenAccountBalance(
-      ata,
-      "processed"
-    );
-    const amount = balance.value.uiAmount;
-    if (amount === null) {
-      elizaLogger6.log(
-        `${deployer.publicKey.toBase58()}:`,
-        "No Account Found"
-      );
-    } else {
-      elizaLogger6.log(`${deployer.publicKey.toBase58()}:`, amount);
-    }
-    return {
-      success: true,
-      ca: mint.publicKey.toBase58(),
-      creator: deployer.publicKey.toBase58()
-    };
-  } else {
-    elizaLogger6.log("Create and Buy failed");
-    return {
-      success: false,
-      ca: mint.publicKey.toBase58(),
-      error: confirmation.value.err || "Transaction failed"
-    };
-  }
-};
-var promptConfirmation2 = async () => {
-  return true;
-};
-var fomoTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-
-Example response:
-\`\`\`json
-{
-    "tokenMetadata": {
-        "name": "Test Token",
-        "symbol": "TEST",
-        "description": "A test token",
-        "image_description": "create an image of a rabbit"
-    },
-    "buyAmountSol": "0.00069",
-    "requiredLiquidity": "85"
-}
-\`\`\`
-
-{{recentMessages}}
-
-Given the recent messages, extract or generate (come up with if not included) the following information about the requested token creation:
-- Token name
-- Token symbol
-- Token description
-- Token image description
-- Amount of SOL to buy
-
-Respond with a JSON markdown block containing only the extracted values.`;
-var fomo_default = {
-  name: "CREATE_AND_BUY_TOKEN",
-  similes: ["CREATE_AND_PURCHASE_TOKEN", "DEPLOY_AND_BUY_TOKEN"],
-  validate: async (_runtime, _message) => {
-    return true;
-  },
-  description: "Create a new token and buy a specified amount using SOL. Requires deployer private key, token metadata, buy amount in SOL, priority fee, and allowOffCurve flag.",
-  handler: async (runtime, message, state, _options, callback) => {
-    elizaLogger6.log("Starting CREATE_AND_BUY_TOKEN handler...");
-    if (!state) {
-      state = await runtime.composeState(message);
-    } else {
-      state = await runtime.updateRecentMessageState(state);
-    }
-    const walletInfo = await walletProvider.get(runtime, message, state);
-    state.walletInfo = walletInfo;
-    const pumpContext = composeContext4({
-      state,
-      template: fomoTemplate
-    });
-    const content = await generateObject({
-      runtime,
-      context: pumpContext,
-      modelClass: ModelClass4.LARGE
-    });
-    if (!isCreateAndBuyContentForFomo(content)) {
-      elizaLogger6.error(
-        "Invalid content for CREATE_AND_BUY_TOKEN action."
-      );
-      return false;
-    }
-    const { tokenMetadata, buyAmountSol, requiredLiquidity } = content;
-    const imageResult = await generateImage2(
-      {
-        prompt: `logo for ${tokenMetadata.name} (${tokenMetadata.symbol}) token - ${tokenMetadata.description}`,
-        width: 256,
-        height: 256,
-        count: 1
-      },
-      runtime
-    );
-    const imageBuffer = Buffer.from(imageResult.data[0], "base64");
-    const formData = new FormData();
-    const blob = new Blob([imageBuffer], { type: "image/png" });
-    formData.append("file", blob, `${tokenMetadata.name}.png`);
-    formData.append("name", tokenMetadata.name);
-    formData.append("symbol", tokenMetadata.symbol);
-    formData.append("description", tokenMetadata.description);
-    const metadataResponse = await fetch("https://pump.fun/api/ipfs", {
-      method: "POST",
-      body: formData
-    });
-    const metadataResponseJSON = await metadataResponse.json();
-    const fullTokenMetadata = {
-      name: tokenMetadata.name,
-      symbol: tokenMetadata.symbol,
-      uri: metadataResponseJSON.metadataUri
-    };
-    const priorityFee = {
-      unitLimit: 1e8,
-      unitPrice: 1e5
-    };
-    const slippage = "2000";
-    try {
-      const privateKeyString = runtime.getSetting("SOLANA_PRIVATE_KEY");
-      const secretKey = bs582.decode(privateKeyString);
-      const deployerKeypair = Keypair4.fromSecretKey(secretKey);
-      const mintKeypair = Keypair4.generate();
-      elizaLogger6.log(
-        `Generated mint address: ${mintKeypair.publicKey.toBase58()}`
-      );
-      const connection3 = new Connection5(settings4.SOLANA_RPC_URL, {
-        commitment: "confirmed",
-        confirmTransactionInitialTimeout: 5e5,
-        // 120 seconds
-        wsEndpoint: settings4.SOLANA_RPC_URL.replace("https", "wss")
-      });
-      const sdk = new Fomo(connection3, "devnet", deployerKeypair);
-      const createAndBuyConfirmation = await promptConfirmation2();
-      if (!createAndBuyConfirmation) {
-        elizaLogger6.log("Create and buy token canceled by user");
-        return false;
-      }
-      const lamports = Math.floor(Number(buyAmountSol) * 1e9);
-      elizaLogger6.log("Executing create and buy transaction...");
-      const result = await createAndBuyToken2({
-        deployer: deployerKeypair,
-        mint: mintKeypair,
-        tokenMetadata: fullTokenMetadata,
-        buyAmountSol: BigInt(lamports),
-        priorityFee: priorityFee.unitPrice,
-        requiredLiquidity: Number(requiredLiquidity),
-        allowOffCurve: false,
-        fomo: sdk,
-        connection: connection3,
-        slippage
-      });
-      if (callback) {
-        if (result.success) {
-          callback({
-            text: `Token ${tokenMetadata.name} (${tokenMetadata.symbol}) created successfully!
-URL: https://fomo.fund/token/${result.ca}
-Creator: ${result.creator}
-View at: https://fomo.fund/token/${result.ca}`,
-            content: {
-              tokenInfo: {
-                symbol: tokenMetadata.symbol,
-                address: result.ca,
-                creator: result.creator,
-                name: tokenMetadata.name,
-                description: tokenMetadata.description,
-                timestamp: Date.now()
-              }
-            }
-          });
-        } else {
-          callback({
-            text: `Failed to create token: ${result.error}
-Attempted mint address: ${result.ca}`,
-            content: {
-              error: result.error,
-              mintAddress: result.ca
-            }
-          });
-        }
-      }
-      const successMessage = `Token created and purchased successfully! View at: https://fomo.fund/token/${mintKeypair.publicKey.toBase58()}`;
-      elizaLogger6.log(successMessage);
-      return result.success;
-    } catch (error) {
-      if (callback) {
-        callback({
-          text: `Error during token creation: ${error.message}`,
-          content: { error: error.message }
-        });
-      }
-      return false;
-    }
-  },
-  examples: [
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          text: "Create a new token called GLITCHIZA with symbol GLITCHIZA and generate a description about it on fomo.fund. Also come up with a description for it to use for image generation .buy 0.00069 SOL worth."
-        }
-      },
-      {
-        user: "{{user2}}",
-        content: {
-          text: "Token GLITCHIZA (GLITCHIZA) created successfully on fomo.fund!\nURL: https://fomo.fund/token/673247855e8012181f941f84\nCreator: Anonymous\nView at: https://fomo.fund/token/673247855e8012181f941f84",
-          action: "CREATE_AND_BUY_TOKEN",
-          content: {
-            tokenInfo: {
-              symbol: "GLITCHIZA",
-              address: "EugPwuZ8oUMWsYHeBGERWvELfLGFmA1taDtmY8uMeX6r",
-              creator: "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
-              name: "GLITCHIZA",
-              description: "A GLITCHIZA token"
-            }
-          }
-        }
-      }
-    ]
-  ]
-};
-
-// src/actions/swapDao.ts
-import {
-  elizaLogger as elizaLogger7
-} from "@elizaos/core";
-import { Connection as Connection6, PublicKey as PublicKey7, Transaction } from "@solana/web3.js";
-async function invokeSwapDao(connection3, authority, statePDA, walletPDA, instructionData) {
-  const discriminator = new Uint8Array([
-    25,
-    143,
-    207,
-    190,
-    174,
-    228,
-    130,
-    107
-  ]);
-  const combinedData = new Uint8Array(
-    discriminator.length + instructionData.length
-  );
-  combinedData.set(discriminator, 0);
-  combinedData.set(instructionData, discriminator.length);
-  const transaction = new Transaction().add({
-    programId: new PublicKey7("PROGRAM_ID"),
-    keys: [
-      { pubkey: authority.publicKey, isSigner: true, isWritable: true },
-      { pubkey: statePDA, isSigner: false, isWritable: true },
-      { pubkey: walletPDA, isSigner: false, isWritable: true }
-    ],
-    data: Buffer.from(combinedData)
-  });
-  const signature = await connection3.sendTransaction(transaction, [
-    authority
-  ]);
-  await connection3.confirmTransaction(signature);
-  return signature;
-}
-async function promptConfirmation3() {
-  const confirmSwap = window.confirm("Confirm the token swap?");
-  return confirmSwap;
-}
-var executeSwapForDAO = {
-  name: "EXECUTE_SWAP_DAO",
-  similes: ["SWAP_TOKENS_DAO", "TOKEN_SWAP_DAO"],
-  validate: async (runtime, message) => {
-    elizaLogger7.log("Message:", message);
-    return true;
-  },
-  description: "Perform a DAO token swap using execute_invoke.",
-  handler: async (runtime, message) => {
-    const { inputToken, outputToken, amount } = message.content;
-    try {
-      const connection3 = new Connection6(
-        runtime.getSetting("SOLANA_RPC_URL")
-      );
-      const { keypair: authority } = await getWalletKey(runtime, true);
-      const daoMint = new PublicKey7(runtime.getSetting("DAO_MINT"));
-      const [statePDA] = await PublicKey7.findProgramAddress(
-        [Buffer.from("state"), daoMint.toBuffer()],
-        authority.publicKey
-      );
-      const [walletPDA] = await PublicKey7.findProgramAddress(
-        [Buffer.from("wallet"), daoMint.toBuffer()],
-        authority.publicKey
-      );
-      const quoteData = await getQuote(
-        connection3,
-        inputToken,
-        outputToken,
-        amount
-      );
-      elizaLogger7.log("Swap Quote:", quoteData);
-      const confirmSwap = await promptConfirmation3();
-      if (!confirmSwap) {
-        elizaLogger7.log("Swap canceled by user");
-        return false;
-      }
-      const instructionData = Buffer.from(
-        JSON.stringify({
-          quote: quoteData.data,
-          userPublicKey: authority.publicKey.toString(),
-          wrapAndUnwrapSol: true
-        })
-      );
-      const txid = await invokeSwapDao(
-        connection3,
-        authority,
-        statePDA,
-        walletPDA,
-        instructionData
-      );
-      elizaLogger7.log("DAO Swap completed successfully!");
-      elizaLogger7.log(`Transaction ID: ${txid}`);
-      return true;
-    } catch (error) {
-      elizaLogger7.error("Error during DAO token swap:", error);
-      return false;
-    }
-  },
-  examples: [
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          inputTokenSymbol: "SOL",
-          outputTokenSymbol: "USDC",
-          inputToken: "So11111111111111111111111111111111111111112",
-          outputToken: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-          amount: 0.1
-        }
-      },
-      {
-        user: "{{user2}}",
-        content: {
-          text: "Swapping 0.1 SOL for USDC using DAO...",
-          action: "TOKEN_SWAP_DAO"
-        }
-      },
-      {
-        user: "{{user2}}",
-        content: {
-          text: "DAO Swap completed successfully! Transaction ID: ..."
-        }
-      }
-    ]
-  ]
-};
-
-// src/actions/transfer.ts
-import {
-  getAssociatedTokenAddressSync as getAssociatedTokenAddressSync3,
-  createTransferInstruction
-} from "@solana/spl-token";
-import { elizaLogger as elizaLogger8, settings as settings5 } from "@elizaos/core";
-import {
-  Connection as Connection7,
-  PublicKey as PublicKey8,
-  TransactionMessage,
-  VersionedTransaction as VersionedTransaction4
-} from "@solana/web3.js";
-import {
-  ModelClass as ModelClass5
-} from "@elizaos/core";
-import { composeContext as composeContext5 } from "@elizaos/core";
-import { generateObjectDeprecated as generateObjectDeprecated3 } from "@elizaos/core";
-function isTransferContent(runtime, content) {
-  elizaLogger8.log("Content for transfer", content);
-  return typeof content.tokenAddress === "string" && typeof content.recipient === "string" && (typeof content.amount === "string" || typeof content.amount === "number");
-}
-var transferTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-
-Example response:
-\`\`\`json
-{
-    "tokenAddress": "BieefG47jAHCGZBxi2q87RDuHyGZyYC3vAzxpyu8pump",
-    "recipient": "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
-    "amount": "1000"
-}
-\`\`\`
-
-{{recentMessages}}
-
-Given the recent messages, extract the following information about the requested token transfer:
-- Token contract address
-- Recipient wallet address
-- Amount to transfer
-
-Respond with a JSON markdown block containing only the extracted values.`;
-var transfer_default = {
-  name: "SEND_TOKEN",
-  similes: [
-    "TRANSFER_TOKEN",
-    "TRANSFER_TOKENS",
-    "SEND_TOKENS",
-    "SEND_SOL",
-    "PAY"
-  ],
-  validate: async (runtime, message) => {
-    elizaLogger8.log("Validating transfer from user:", message.userId);
-    return false;
-  },
-  description: "Transfer tokens from the agent's wallet to another address",
-  handler: async (runtime, message, state, _options, callback) => {
-    elizaLogger8.log("Starting SEND_TOKEN handler...");
-    if (!state) {
-      state = await runtime.composeState(message);
-    } else {
-      state = await runtime.updateRecentMessageState(state);
-    }
-    const transferContext = composeContext5({
-      state,
-      template: transferTemplate
-    });
-    const content = await generateObjectDeprecated3({
-      runtime,
-      context: transferContext,
-      modelClass: ModelClass5.LARGE
-    });
-    if (!isTransferContent(runtime, content)) {
-      elizaLogger8.error("Invalid content for TRANSFER_TOKEN action.");
-      if (callback) {
-        callback({
-          text: "Unable to process transfer request. Invalid content provided.",
-          content: { error: "Invalid transfer content" }
-        });
-      }
-      return false;
-    }
-    try {
-      const { keypair: senderKeypair } = await getWalletKey(
-        runtime,
-        true
-      );
-      const connection3 = new Connection7(settings5.SOLANA_RPC_URL);
-      const mintPubkey = new PublicKey8(content.tokenAddress);
-      const recipientPubkey = new PublicKey8(content.recipient);
-      const mintInfo = await connection3.getParsedAccountInfo(mintPubkey);
-      const decimals = mintInfo.value?.data?.parsed?.info?.decimals ?? 9;
-      const adjustedAmount = BigInt(
-        Number(content.amount) * Math.pow(10, decimals)
-      );
-      elizaLogger8.log(
-        `Transferring: ${content.amount} tokens (${adjustedAmount} base units)`
-      );
-      const senderATA = getAssociatedTokenAddressSync3(
-        mintPubkey,
-        senderKeypair.publicKey
-      );
-      const recipientATA = getAssociatedTokenAddressSync3(
-        mintPubkey,
-        recipientPubkey
-      );
-      const instructions = [];
-      const recipientATAInfo = await connection3.getAccountInfo(recipientATA);
-      if (!recipientATAInfo) {
-        const { createAssociatedTokenAccountInstruction } = await import("@solana/spl-token");
-        instructions.push(
-          createAssociatedTokenAccountInstruction(
-            senderKeypair.publicKey,
-            recipientATA,
-            recipientPubkey,
-            mintPubkey
-          )
-        );
-      }
-      instructions.push(
-        createTransferInstruction(
-          senderATA,
-          recipientATA,
-          senderKeypair.publicKey,
-          adjustedAmount
-        )
-      );
-      const messageV0 = new TransactionMessage({
-        payerKey: senderKeypair.publicKey,
-        recentBlockhash: (await connection3.getLatestBlockhash()).blockhash,
-        instructions
-      }).compileToV0Message();
-      const transaction = new VersionedTransaction4(messageV0);
-      transaction.sign([senderKeypair]);
-      const signature = await connection3.sendTransaction(transaction);
-      elizaLogger8.log("Transfer successful:", signature);
-      if (callback) {
-        callback({
-          text: `Successfully transferred ${content.amount} tokens to ${content.recipient}
-Transaction: ${signature}`,
-          content: {
-            success: true,
-            signature,
-            amount: content.amount,
-            recipient: content.recipient
-          }
-        });
-      }
-      return true;
-    } catch (error) {
-      elizaLogger8.error("Error during token transfer:", error);
-      if (callback) {
-        callback({
-          text: `Error transferring tokens: ${error.message}`,
-          content: { error: error.message }
-        });
-      }
-      return false;
-    }
-  },
-  examples: [
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          text: "Send 69 EZSIS BieefG47jAHCGZBxi2q87RDuHyGZyYC3vAzxpyu8pump to 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa"
-        }
-      },
-      {
-        user: "{{user2}}",
-        content: {
-          text: "I'll send 69 EZSIS tokens now...",
-          action: "SEND_TOKEN"
-        }
-      },
-      {
-        user: "{{user2}}",
-        content: {
-          text: "Successfully sent 69 EZSIS tokens to 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa\nTransaction: 5KtPn3DXXzHkb7VAVHZGwXJQqww39ASnrf7YkyJoF2qAGEpBEEGvRHLnnTG8ZVwKqNHMqSckWVGnsQAgfH5pbxEb"
-        }
-      }
-    ]
-  ]
-};
-
-// src/evaluators/trust.ts
-import {
-  booleanFooter,
-  composeContext as composeContext6,
-  elizaLogger as elizaLogger10,
-  generateObjectArray,
-  generateTrueOrFalse,
-  MemoryManager,
-  ModelClass as ModelClass6
-} from "@elizaos/core";
-import { Connection as Connection9 } from "@solana/web3.js";
-
 // src/providers/token.ts
-import {
-  elizaLogger as elizaLogger9,
-  settings as settings6
-} from "@elizaos/core";
-import NodeCache2 from "node-cache";
-import * as path2 from "path";
-
-// src/bignumber.ts
-import BigNumber3 from "bignumber.js";
-function toBN(value) {
-  return new BigNumber3(value);
-}
-
-// src/providers/token.ts
-import { Connection as Connection8 } from "@solana/web3.js";
+import { Connection as Connection2 } from "@solana/web3.js";
 var PROVIDER_CONFIG2 = {
   BIRDEYE_API: "https://public-api.birdeye.so",
   MAX_RETRIES: 3,
@@ -1760,12 +425,12 @@ var TokenProvider = class {
   GRAPHQL_ENDPOINT = "https://graph.codex.io/graphql";
   async readFromCache(key) {
     const cached = await this.cacheManager.get(
-      path2.join(this.cacheKey, key)
+      path.join(this.cacheKey, key)
     );
     return cached;
   }
   async writeToCache(key, data) {
-    await this.cacheManager.set(path2.join(this.cacheKey, key), data, {
+    await this.cacheManager.set(path.join(this.cacheKey, key), data, {
       expires: Date.now() + 5 * 60 * 1e3
     });
   }
@@ -1794,7 +459,7 @@ var TokenProvider = class {
           headers: {
             Accept: "application/json",
             "x-chain": "solana",
-            "X-API-KEY": settings6.BIRDEYE_API_KEY || "",
+            "X-API-KEY": settings.BIRDEYE_API_KEY || "",
             ...options.headers
           }
         });
@@ -1807,17 +472,17 @@ var TokenProvider = class {
         const data = await response.json();
         return data;
       } catch (error) {
-        elizaLogger9.error(`Attempt ${i + 1} failed:`, error);
+        elizaLogger3.error(`Attempt ${i + 1} failed:`, error);
         lastError = error;
         if (i < PROVIDER_CONFIG2.MAX_RETRIES - 1) {
           const delay = PROVIDER_CONFIG2.RETRY_DELAY * Math.pow(2, i);
-          elizaLogger9.log(`Waiting ${delay}ms before retrying...`);
+          elizaLogger3.log(`Waiting ${delay}ms before retrying...`);
           await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
         }
       }
     }
-    elizaLogger9.error(
+    elizaLogger3.error(
       "All attempts failed. Throwing the last error:",
       lastError
     );
@@ -1839,7 +504,7 @@ var TokenProvider = class {
         return null;
       }
     } catch (error) {
-      elizaLogger9.error("Error checking token in wallet:", error);
+      elizaLogger3.error("Error checking token in wallet:", error);
       return null;
     }
   }
@@ -1848,7 +513,7 @@ var TokenProvider = class {
       const cacheKey = `token_${this.tokenAddress}`;
       const cachedData = await this.getCachedData(cacheKey);
       if (cachedData) {
-        elizaLogger9.log(
+        elizaLogger3.log(
           `Returning cached token data for ${this.tokenAddress}.`
         );
         return cachedData;
@@ -1885,7 +550,7 @@ var TokenProvider = class {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: settings6.CODEX_API_KEY
+          Authorization: settings.CODEX_API_KEY
         },
         body: JSON.stringify({
           query,
@@ -1911,7 +576,7 @@ var TokenProvider = class {
         isScam: token.isScam ? true : false
       };
     } catch (error) {
-      elizaLogger9.error(
+      elizaLogger3.error(
         "Error fetching token data from Codex:",
         error.message
       );
@@ -1923,7 +588,7 @@ var TokenProvider = class {
       const cacheKey = "prices";
       const cachedData = await this.getCachedData(cacheKey);
       if (cachedData) {
-        elizaLogger9.log("Returning cached prices.");
+        elizaLogger3.log("Returning cached prices.");
         return cachedData;
       }
       const { SOL, BTC, ETH } = PROVIDER_CONFIG2.TOKEN_ADDRESSES;
@@ -1946,7 +611,7 @@ var TokenProvider = class {
           const price = response.data.value.toString();
           prices[token === SOL ? "solana" : token === BTC ? "bitcoin" : "ethereum"].usd = price;
         } else {
-          elizaLogger9.warn(
+          elizaLogger3.warn(
             `No price data available for token: ${token}`
           );
         }
@@ -1954,7 +619,7 @@ var TokenProvider = class {
       this.setCachedData(cacheKey, prices);
       return prices;
     } catch (error) {
-      elizaLogger9.error("Error fetching prices:", error);
+      elizaLogger3.error("Error fetching prices:", error);
       throw error;
     }
   }
@@ -2001,7 +666,7 @@ var TokenProvider = class {
     const cacheKey = `tokenSecurity_${this.tokenAddress}`;
     const cachedData = await this.getCachedData(cacheKey);
     if (cachedData) {
-      elizaLogger9.log(
+      elizaLogger3.log(
         `Returning cached token security data for ${this.tokenAddress}.`
       );
       return cachedData;
@@ -2020,14 +685,14 @@ var TokenProvider = class {
       top10HolderPercent: data.data.top10HolderPercent
     };
     this.setCachedData(cacheKey, security);
-    elizaLogger9.log(`Token security data cached for ${this.tokenAddress}.`);
+    elizaLogger3.log(`Token security data cached for ${this.tokenAddress}.`);
     return security;
   }
   async fetchTokenTradeData() {
     const cacheKey = `tokenTradeData_${this.tokenAddress}`;
     const cachedData = await this.getCachedData(cacheKey);
     if (cachedData) {
-      elizaLogger9.log(
+      elizaLogger3.log(
         `Returning cached token trade data for ${this.tokenAddress}.`
       );
       return cachedData;
@@ -2037,10 +702,10 @@ var TokenProvider = class {
       method: "GET",
       headers: {
         accept: "application/json",
-        "X-API-KEY": settings6.BIRDEYE_API_KEY || ""
+        "X-API-KEY": settings.BIRDEYE_API_KEY || ""
       }
     };
-    const data = await fetch(url, options).then((res) => res.json()).catch((err) => elizaLogger9.error(err));
+    const data = await fetch(url, options).then((res) => res.json()).catch((err) => elizaLogger3.error(err));
     if (!data?.success || !data?.data) {
       throw new Error("No token trade data available");
     }
@@ -2237,16 +902,16 @@ var TokenProvider = class {
     const cacheKey = `dexScreenerData_${this.tokenAddress}`;
     const cachedData = await this.getCachedData(cacheKey);
     if (cachedData) {
-      elizaLogger9.log("Returning cached DexScreener data.");
+      elizaLogger3.log("Returning cached DexScreener data.");
       return cachedData;
     }
     const url = `https://api.dexscreener.com/latest/dex/search?q=${this.tokenAddress}`;
     try {
-      elizaLogger9.log(
+      elizaLogger3.log(
         `Fetching DexScreener data for token: ${this.tokenAddress}`
       );
       const data = await fetch(url).then((res) => res.json()).catch((err) => {
-        elizaLogger9.error(err);
+        elizaLogger3.error(err);
       });
       if (!data || !data.pairs) {
         throw new Error("No DexScreener data available");
@@ -2258,7 +923,7 @@ var TokenProvider = class {
       this.setCachedData(cacheKey, dexData);
       return dexData;
     } catch (error) {
-      elizaLogger9.error(`Error fetching DexScreener data:`, error);
+      elizaLogger3.error(`Error fetching DexScreener data:`, error);
       return {
         schemaVersion: "1.0.0",
         pairs: []
@@ -2269,14 +934,14 @@ var TokenProvider = class {
     const cacheKey = `dexScreenerData_search_${symbol}`;
     const cachedData = await this.getCachedData(cacheKey);
     if (cachedData) {
-      elizaLogger9.log("Returning cached search DexScreener data.");
+      elizaLogger3.log("Returning cached search DexScreener data.");
       return this.getHighestLiquidityPair(cachedData);
     }
     const url = `https://api.dexscreener.com/latest/dex/search?q=${symbol}`;
     try {
-      elizaLogger9.log(`Fetching DexScreener data for symbol: ${symbol}`);
+      elizaLogger3.log(`Fetching DexScreener data for symbol: ${symbol}`);
       const data = await fetch(url).then((res) => res.json()).catch((err) => {
-        elizaLogger9.error(err);
+        elizaLogger3.error(err);
         return null;
       });
       if (!data || !data.pairs || data.pairs.length === 0) {
@@ -2289,7 +954,7 @@ var TokenProvider = class {
       this.setCachedData(cacheKey, dexData);
       return this.getHighestLiquidityPair(dexData);
     } catch (error) {
-      elizaLogger9.error(`Error fetching DexScreener data:`, error);
+      elizaLogger3.error(`Error fetching DexScreener data:`, error);
       return null;
     }
   }
@@ -2341,15 +1006,15 @@ var TokenProvider = class {
     const cacheKey = `holderList_${this.tokenAddress}`;
     const cachedData = await this.getCachedData(cacheKey);
     if (cachedData) {
-      elizaLogger9.log("Returning cached holder list.");
+      elizaLogger3.log("Returning cached holder list.");
       return cachedData;
     }
     const allHoldersMap = /* @__PURE__ */ new Map();
     let page = 1;
     const limit = 1e3;
     let cursor;
-    const url = `https://mainnet.helius-rpc.com/?api-key=${settings6.HELIUS_API_KEY || ""}`;
-    elizaLogger9.log({ url });
+    const url = `https://mainnet.helius-rpc.com/?api-key=${settings.HELIUS_API_KEY || ""}`;
+    elizaLogger3.log({ url });
     try {
       while (true) {
         const params = {
@@ -2361,7 +1026,7 @@ var TokenProvider = class {
         if (cursor != void 0) {
           params.cursor = cursor;
         }
-        elizaLogger9.log(`Fetching holders - Page ${page}`);
+        elizaLogger3.log(`Fetching holders - Page ${page}`);
         if (page > 2) {
           break;
         }
@@ -2379,17 +1044,17 @@ var TokenProvider = class {
         });
         const data = await response.json();
         if (!data || !data.result || !data.result.token_accounts || data.result.token_accounts.length === 0) {
-          elizaLogger9.log(
+          elizaLogger3.log(
             `No more holders found. Total pages fetched: ${page - 1}`
           );
           break;
         }
-        elizaLogger9.log(
+        elizaLogger3.log(
           `Processing ${data.result.token_accounts.length} holders from page ${page}`
         );
         data.result.token_accounts.forEach((account) => {
           const owner = account.owner;
-          const balance = parseFloat(account.amount);
+          const balance = Number.parseFloat(account.amount);
           if (allHoldersMap.has(owner)) {
             allHoldersMap.set(
               owner,
@@ -2408,11 +1073,11 @@ var TokenProvider = class {
         address,
         balance: balance.toString()
       }));
-      elizaLogger9.log(`Total unique holders fetched: ${holders.length}`);
+      elizaLogger3.log(`Total unique holders fetched: ${holders.length}`);
       this.setCachedData(cacheKey, holders);
       return holders;
     } catch (error) {
-      elizaLogger9.error("Error fetching holder list from Helius:", error);
+      elizaLogger3.error("Error fetching holder list from Helius:", error);
       throw new Error("Failed to fetch holder list from Helius.");
     }
   }
@@ -2446,42 +1111,42 @@ var TokenProvider = class {
       ).length;
       return highSupplyHoldersCount;
     } catch (error) {
-      elizaLogger9.error("Error counting high supply holders:", error);
+      elizaLogger3.error("Error counting high supply holders:", error);
       return 0;
     }
   }
   async getProcessedTokenData() {
     try {
-      elizaLogger9.log(
+      elizaLogger3.log(
         `Fetching security data for token: ${this.tokenAddress}`
       );
       const security = await this.fetchTokenSecurity();
       const tokenCodex = await this.fetchTokenCodex();
-      elizaLogger9.log(
+      elizaLogger3.log(
         `Fetching trade data for token: ${this.tokenAddress}`
       );
       const tradeData = await this.fetchTokenTradeData();
-      elizaLogger9.log(
+      elizaLogger3.log(
         `Fetching DexScreener data for token: ${this.tokenAddress}`
       );
       const dexData = await this.fetchDexScreenerData();
-      elizaLogger9.log(
+      elizaLogger3.log(
         `Analyzing holder distribution for token: ${this.tokenAddress}`
       );
       const holderDistributionTrend = await this.analyzeHolderDistribution(tradeData);
-      elizaLogger9.log(
+      elizaLogger3.log(
         `Filtering high-value holders for token: ${this.tokenAddress}`
       );
       const highValueHolders = await this.filterHighValueHolders(tradeData);
-      elizaLogger9.log(
+      elizaLogger3.log(
         `Checking recent trades for token: ${this.tokenAddress}`
       );
       const recentTrades = await this.checkRecentTrades(tradeData);
-      elizaLogger9.log(
+      elizaLogger3.log(
         `Counting high-supply holders for token: ${this.tokenAddress}`
       );
       const highSupplyHoldersCount = await this.countHighSupplyHolders(security);
-      elizaLogger9.log(
+      elizaLogger3.log(
         `Determining DexScreener listing status for token: ${this.tokenAddress}`
       );
       const isDexScreenerListed = dexData.pairs.length > 0;
@@ -2502,7 +1167,7 @@ var TokenProvider = class {
       };
       return processedData;
     } catch (error) {
-      elizaLogger9.error("Error processing token data:", error);
+      elizaLogger3.error("Error processing token data:", error);
       throw error;
     }
   }
@@ -2548,7 +1213,7 @@ var TokenProvider = class {
       const isMarketCapTooLow = marketCapUsd.lt(1e5);
       return isTop10Holder || isVolume24h || isPriceChange24h || isPriceChange12h || isUniqueWallet24h || isLiquidityTooLow || isMarketCapTooLow;
     } catch (error) {
-      elizaLogger9.error("Error processing token data:", error);
+      elizaLogger3.error("Error processing token data:", error);
       throw error;
     }
   }
@@ -2640,24 +1305,1043 @@ var TokenProvider = class {
     }
     output += `
 `;
-    elizaLogger9.log("Formatted token data:", output);
+    elizaLogger3.log("Formatted token data:", output);
     return output;
   }
   async getFormattedTokenReport() {
     try {
-      elizaLogger9.log("Generating formatted token report...");
+      elizaLogger3.log("Generating formatted token report...");
       const processedData = await this.getProcessedTokenData();
       return this.formatTokenData(processedData);
     } catch (error) {
-      elizaLogger9.error("Error generating token report:", error);
+      elizaLogger3.error("Error generating token report:", error);
       return "Unable to fetch token information. Please try again later.";
     }
   }
 };
 var tokenAddress = PROVIDER_CONFIG2.TOKEN_ADDRESSES.Example;
-var connection2 = new Connection8(PROVIDER_CONFIG2.DEFAULT_RPC);
+var connection = new Connection2(PROVIDER_CONFIG2.DEFAULT_RPC);
+var tokenProvider = {
+  get: async (runtime, _message, _state) => {
+    try {
+      const { publicKey } = await getWalletKey(runtime, false);
+      const walletProvider2 = new WalletProvider(connection, publicKey);
+      const provider = new TokenProvider(
+        tokenAddress,
+        walletProvider2,
+        runtime.cacheManager
+      );
+      return provider.getFormattedTokenReport();
+    } catch (error) {
+      elizaLogger3.error("Error fetching token data:", error);
+      return "Unable to fetch token information. Please try again later.";
+    }
+  }
+};
+
+// src/providers/trustScoreProvider.ts
+import {
+  elizaLogger as elizaLogger5,
+  settings as settings2
+} from "@elizaos/core";
+import {
+  TrustScoreDatabase
+} from "@elizaos/plugin-trustdb";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
+import { Connection as Connection4, PublicKey as PublicKey4 } from "@solana/web3.js";
+
+// ../../node_modules/uuid/dist/esm-node/rng.js
+import crypto from "crypto";
+var rnds8Pool = new Uint8Array(256);
+var poolPtr = rnds8Pool.length;
+function rng() {
+  if (poolPtr > rnds8Pool.length - 16) {
+    crypto.randomFillSync(rnds8Pool);
+    poolPtr = 0;
+  }
+  return rnds8Pool.slice(poolPtr, poolPtr += 16);
+}
+
+// ../../node_modules/uuid/dist/esm-node/regex.js
+var regex_default = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000)$/i;
+
+// ../../node_modules/uuid/dist/esm-node/validate.js
+function validate(uuid) {
+  return typeof uuid === "string" && regex_default.test(uuid);
+}
+var validate_default = validate;
+
+// ../../node_modules/uuid/dist/esm-node/stringify.js
+var byteToHex = [];
+for (let i = 0; i < 256; ++i) {
+  byteToHex.push((i + 256).toString(16).substr(1));
+}
+function stringify(arr, offset = 0) {
+  const uuid = (byteToHex[arr[offset + 0]] + byteToHex[arr[offset + 1]] + byteToHex[arr[offset + 2]] + byteToHex[arr[offset + 3]] + "-" + byteToHex[arr[offset + 4]] + byteToHex[arr[offset + 5]] + "-" + byteToHex[arr[offset + 6]] + byteToHex[arr[offset + 7]] + "-" + byteToHex[arr[offset + 8]] + byteToHex[arr[offset + 9]] + "-" + byteToHex[arr[offset + 10]] + byteToHex[arr[offset + 11]] + byteToHex[arr[offset + 12]] + byteToHex[arr[offset + 13]] + byteToHex[arr[offset + 14]] + byteToHex[arr[offset + 15]]).toLowerCase();
+  if (!validate_default(uuid)) {
+    throw TypeError("Stringified UUID is invalid");
+  }
+  return uuid;
+}
+var stringify_default = stringify;
+
+// ../../node_modules/uuid/dist/esm-node/v4.js
+function v4(options, buf, offset) {
+  options = options || {};
+  const rnds = options.random || (options.rng || rng)();
+  rnds[6] = rnds[6] & 15 | 64;
+  rnds[8] = rnds[8] & 63 | 128;
+  if (buf) {
+    offset = offset || 0;
+    for (let i = 0; i < 16; ++i) {
+      buf[offset + i] = rnds[i];
+    }
+    return buf;
+  }
+  return stringify_default(rnds);
+}
+var v4_default = v4;
+
+// src/providers/simulationSellingService.ts
+import { Connection as Connection3, PublicKey as PublicKey3 } from "@solana/web3.js";
+import { elizaLogger as elizaLogger4 } from "@elizaos/core";
+import * as amqp from "amqplib";
+var SimulationSellingService = class {
+  trustScoreDb;
+  walletProvider;
+  connection;
+  baseMint;
+  DECAY_RATE = 0.95;
+  MAX_DECAY_DAYS = 30;
+  backend;
+  backendToken;
+  amqpConnection;
+  amqpChannel;
+  sonarBe;
+  sonarBeToken;
+  runtime;
+  runningProcesses = /* @__PURE__ */ new Set();
+  constructor(runtime, trustScoreDb) {
+    this.trustScoreDb = trustScoreDb;
+    this.connection = new Connection3(runtime.getSetting("SOLANA_RPC_URL"));
+    this.baseMint = new PublicKey3(
+      runtime.getSetting("BASE_MINT") || "So11111111111111111111111111111111111111112"
+    );
+    this.backend = runtime.getSetting("BACKEND_URL");
+    this.backendToken = runtime.getSetting("BACKEND_TOKEN");
+    this.initializeRabbitMQ(runtime.getSetting("AMQP_URL"));
+    this.sonarBe = runtime.getSetting("SONAR_BE");
+    this.sonarBeToken = runtime.getSetting("SONAR_BE_TOKEN");
+    this.runtime = runtime;
+    this.initializeWalletProvider();
+  }
+  /**
+   * Initializes the RabbitMQ connection and starts consuming messages.
+   * @param amqpUrl The RabbitMQ server URL.
+   */
+  async initializeRabbitMQ(amqpUrl) {
+    try {
+      this.amqpConnection = await amqp.connect(amqpUrl);
+      this.amqpChannel = await this.amqpConnection.createChannel();
+      elizaLogger4.log("Connected to RabbitMQ");
+      this.consumeMessages();
+    } catch (error) {
+      elizaLogger4.error("Failed to connect to RabbitMQ:", error);
+    }
+  }
+  /**
+   * Sets up the consumer for the specified RabbitMQ queue.
+   */
+  async consumeMessages() {
+    const queue = "process_eliza_simulation";
+    await this.amqpChannel.assertQueue(queue, { durable: true });
+    this.amqpChannel.consume(
+      queue,
+      (msg) => {
+        if (msg !== null) {
+          const content = msg.content.toString();
+          this.processMessage(content);
+          this.amqpChannel.ack(msg);
+        }
+      },
+      { noAck: false }
+    );
+    elizaLogger4.log(`Listening for messages on queue: ${queue}`);
+  }
+  /**
+   * Processes incoming messages from RabbitMQ.
+   * @param message The message content as a string.
+   */
+  async processMessage(message) {
+    try {
+      const { tokenAddress: tokenAddress2, amount, sell_recommender_id } = JSON.parse(message);
+      elizaLogger4.log(
+        `Received message for token ${tokenAddress2} to sell ${amount}`
+      );
+      const decision = {
+        tokenPerformance: await this.trustScoreDb.getTokenPerformance(tokenAddress2),
+        amountToSell: amount,
+        sell_recommender_id
+      };
+      await this.executeSellDecision(decision);
+      this.runningProcesses.delete(tokenAddress2);
+    } catch (error) {
+      elizaLogger4.error("Error processing message:", error);
+    }
+  }
+  /**
+   * Executes a single sell decision.
+   * @param decision The sell decision containing token performance and amount to sell.
+   */
+  async executeSellDecision(decision) {
+    const { tokenPerformance, amountToSell, sell_recommender_id } = decision;
+    const tokenAddress2 = tokenPerformance.tokenAddress;
+    try {
+      elizaLogger4.log(
+        `Executing sell for token ${tokenPerformance.symbol}: ${amountToSell}`
+      );
+      const sellDetails = {
+        sell_amount: amountToSell,
+        sell_recommender_id
+        // Adjust if necessary
+      };
+      const sellTimeStamp = (/* @__PURE__ */ new Date()).toISOString();
+      const tokenProvider2 = new TokenProvider(
+        tokenAddress2,
+        this.walletProvider,
+        this.runtime.cacheManager
+      );
+      const sellDetailsData = await this.updateSellDetails(
+        tokenAddress2,
+        sell_recommender_id,
+        sellTimeStamp,
+        sellDetails,
+        true,
+        // isSimulation
+        tokenProvider2
+      );
+      elizaLogger4.log(
+        "Sell order executed successfully",
+        sellDetailsData
+      );
+      const balance = this.trustScoreDb.getTokenBalance(tokenAddress2);
+      if (balance === 0) {
+        this.runningProcesses.delete(tokenAddress2);
+      }
+      await this.stopProcessInTheSonarBackend(tokenAddress2);
+    } catch (error) {
+      elizaLogger4.error(
+        `Error executing sell for token ${tokenAddress2}:`,
+        error
+      );
+    }
+  }
+  /**
+   * Derives the public key based on the TEE (Trusted Execution Environment) mode and initializes the wallet provider.
+   * If TEE mode is enabled, derives a keypair using the DeriveKeyProvider with the wallet secret salt and agent ID.
+   * If TEE mode is disabled, uses the provided Solana public key or wallet public key from settings.
+   */
+  async initializeWalletProvider() {
+    const { publicKey } = await getWalletKey(this.runtime, false);
+    this.walletProvider = new WalletProvider(this.connection, publicKey);
+  }
+  async startService() {
+    elizaLogger4.log("Starting SellingService...");
+    await this.startListeners();
+  }
+  async startListeners() {
+    elizaLogger4.log("Scanning for token performances...");
+    const tokenPerformances = await this.trustScoreDb.getAllTokenPerformancesWithBalance();
+    await this.processTokenPerformances(tokenPerformances);
+  }
+  processTokenPerformances(tokenPerformances) {
+    elizaLogger4.log("Deciding when to sell and how much...");
+    const runningProcesses = this.runningProcesses;
+    tokenPerformances = tokenPerformances.filter(
+      (tp) => !runningProcesses.has(tp.tokenAddress)
+    );
+    tokenPerformances.forEach(async (tokenPerformance) => {
+      const tokenProvider2 = new TokenProvider(
+        tokenPerformance.tokenAddress,
+        this.walletProvider,
+        this.runtime.cacheManager
+      );
+      const tokenRecommendations = this.trustScoreDb.getRecommendationsByToken(
+        tokenPerformance.tokenAddress
+      );
+      const tokenRecommendation = tokenRecommendations[0];
+      const balance = tokenPerformance.balance;
+      const sell_recommender_id = tokenRecommendation.recommenderId;
+      const tokenAddress2 = tokenPerformance.tokenAddress;
+      const process = await this.startProcessInTheSonarBackend(
+        tokenAddress2,
+        balance,
+        true,
+        sell_recommender_id,
+        tokenPerformance.initialMarketCap
+      );
+      if (process) {
+        this.runningProcesses.add(tokenAddress2);
+      }
+    });
+  }
+  processTokenPerformance(tokenAddress2, recommenderId) {
+    try {
+      const runningProcesses = this.runningProcesses;
+      if (runningProcesses.has(tokenAddress2)) {
+        elizaLogger4.log(
+          `Token ${tokenAddress2} is already being processed`
+        );
+        return;
+      }
+      const tokenPerformance = this.trustScoreDb.getTokenPerformance(tokenAddress2);
+      const tokenProvider2 = new TokenProvider(
+        tokenPerformance.tokenAddress,
+        this.walletProvider,
+        this.runtime.cacheManager
+      );
+      const balance = tokenPerformance.balance;
+      const sell_recommender_id = recommenderId;
+      const process = this.startProcessInTheSonarBackend(
+        tokenAddress2,
+        balance,
+        true,
+        sell_recommender_id,
+        tokenPerformance.initialMarketCap
+      );
+      if (process) {
+        this.runningProcesses.add(tokenAddress2);
+      }
+    } catch (error) {
+      elizaLogger4.error(
+        `Error getting token performance for token ${tokenAddress2}:`,
+        error
+      );
+    }
+  }
+  async startProcessInTheSonarBackend(tokenAddress2, balance, isSimulation, sell_recommender_id, initial_mc) {
+    try {
+      const message = JSON.stringify({
+        tokenAddress: tokenAddress2,
+        balance,
+        isSimulation,
+        initial_mc,
+        sell_recommender_id
+      });
+      const response = await fetch(
+        `${this.sonarBe}/elizaos-sol/startProcess`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": `${this.sonarBeToken}`
+          },
+          body: message
+        }
+      );
+      if (!response.ok) {
+        elizaLogger4.error(
+          `Failed to send message to process token ${tokenAddress2}`
+        );
+        return;
+      }
+      const result = await response.json();
+      elizaLogger4.log("Received response:", result);
+      elizaLogger4.log(`Sent message to process token ${tokenAddress2}`);
+      return result;
+    } catch (error) {
+      elizaLogger4.error(
+        `Error sending message to process token ${tokenAddress2}:`,
+        error
+      );
+      return null;
+    }
+  }
+  stopProcessInTheSonarBackend(tokenAddress2) {
+    try {
+      return fetch(`${this.sonarBe}/elizaos-sol/stopProcess`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": `${this.sonarBeToken}`
+        },
+        body: JSON.stringify({ tokenAddress: tokenAddress2 })
+      });
+    } catch (error) {
+      elizaLogger4.error(
+        `Error stopping process for token ${tokenAddress2}:`,
+        error
+      );
+    }
+  }
+  async updateSellDetails(tokenAddress2, recommenderId, sellTimeStamp, sellDetails, isSimulation, tokenProvider2) {
+    const recommender = await this.trustScoreDb.getOrCreateRecommenderWithTelegramId(
+      recommenderId
+    );
+    const processedData = await tokenProvider2.getProcessedTokenData();
+    const prices = await this.walletProvider.fetchPrices(null);
+    const solPrice = prices.solana.usd;
+    const sellSol = sellDetails.sell_amount / Number.parseFloat(solPrice);
+    const sell_value_usd = sellDetails.sell_amount * processedData.tradeData.price;
+    const trade = await this.trustScoreDb.getLatestTradePerformance(
+      tokenAddress2,
+      recommender.id,
+      isSimulation
+    );
+    const buyTimeStamp = trade.buy_timeStamp;
+    const marketCap = processedData.dexScreenerData.pairs[0]?.marketCap || 0;
+    const liquidity = processedData.dexScreenerData.pairs[0]?.liquidity.usd || 0;
+    const sell_price = processedData.tradeData.price;
+    const profit_usd = sell_value_usd - trade.buy_value_usd;
+    const profit_percent = profit_usd / trade.buy_value_usd * 100;
+    const market_cap_change = marketCap - trade.buy_market_cap;
+    const liquidity_change = liquidity - trade.buy_liquidity;
+    const isRapidDump = await this.isRapidDump(tokenAddress2, tokenProvider2);
+    const sellDetailsData = {
+      sell_price,
+      sell_timeStamp: sellTimeStamp,
+      sell_amount: sellDetails.sell_amount,
+      received_sol: sellSol,
+      sell_value_usd,
+      profit_usd,
+      profit_percent,
+      sell_market_cap: marketCap,
+      market_cap_change,
+      sell_liquidity: liquidity,
+      liquidity_change,
+      rapidDump: isRapidDump,
+      sell_recommender_id: sellDetails.sell_recommender_id || null
+    };
+    this.trustScoreDb.updateTradePerformanceOnSell(
+      tokenAddress2,
+      recommender.id,
+      buyTimeStamp,
+      sellDetailsData,
+      isSimulation
+    );
+    const oldBalance = this.trustScoreDb.getTokenBalance(tokenAddress2);
+    const tokenBalance = oldBalance - sellDetails.sell_amount;
+    this.trustScoreDb.updateTokenBalance(tokenAddress2, tokenBalance);
+    const hash = Math.random().toString(36).substring(7);
+    const transaction = {
+      tokenAddress: tokenAddress2,
+      type: "sell",
+      transactionHash: hash,
+      amount: sellDetails.sell_amount,
+      price: processedData.tradeData.price,
+      isSimulation: true,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    this.trustScoreDb.addTransaction(transaction);
+    this.updateTradeInBe(
+      tokenAddress2,
+      recommender.id,
+      recommender.telegramId,
+      sellDetailsData,
+      tokenBalance
+    );
+    return sellDetailsData;
+  }
+  async isRapidDump(tokenAddress2, tokenProvider2) {
+    const processedData = await tokenProvider2.getProcessedTokenData();
+    elizaLogger4.log(
+      `Fetched processed token data for token: ${tokenAddress2}`
+    );
+    return processedData.tradeData.trade_24h_change_percent < -50;
+  }
+  async delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  async updateTradeInBe(tokenAddress2, recommenderId, username, data, balanceLeft, retries = 3, delayMs = 2e3) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        await fetch(
+          `${this.backend}/api/updaters/updateTradePerformance`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.backendToken}`
+            },
+            body: JSON.stringify({
+              tokenAddress: tokenAddress2,
+              tradeData: data,
+              recommenderId,
+              username,
+              isSimulation: true,
+              balanceLeft
+            })
+          }
+        );
+        return;
+      } catch (error) {
+        elizaLogger4.error(
+          `Attempt ${attempt} failed: Error creating trade in backend`,
+          error
+        );
+        if (attempt < retries) {
+          elizaLogger4.log(`Retrying in ${delayMs} ms...`);
+          await this.delay(delayMs);
+        } else {
+          elizaLogger4.error("All attempts failed.");
+        }
+      }
+    }
+  }
+};
+
+// src/providers/trustScoreProvider.ts
+var Wallet = settings2.MAIN_WALLET_ADDRESS;
+var TrustScoreManager = class {
+  tokenProvider;
+  trustScoreDb;
+  simulationSellingService;
+  connection;
+  baseMint;
+  DECAY_RATE = 0.95;
+  MAX_DECAY_DAYS = 30;
+  backend;
+  backendToken;
+  constructor(runtime, tokenProvider2, trustScoreDb) {
+    this.tokenProvider = tokenProvider2;
+    this.trustScoreDb = trustScoreDb;
+    this.connection = new Connection4(runtime.getSetting("SOLANA_RPC_URL"));
+    this.baseMint = new PublicKey4(
+      runtime.getSetting("BASE_MINT") || "So11111111111111111111111111111111111111112"
+    );
+    this.backend = runtime.getSetting("BACKEND_URL");
+    this.backendToken = runtime.getSetting("BACKEND_TOKEN");
+    this.simulationSellingService = new SimulationSellingService(
+      runtime,
+      this.trustScoreDb
+    );
+  }
+  //getRecommenederBalance
+  async getRecommenederBalance(recommenderWallet) {
+    try {
+      const tokenAta = await getAssociatedTokenAddress(
+        new PublicKey4(recommenderWallet),
+        this.baseMint
+      );
+      const tokenBalInfo = await this.connection.getTokenAccountBalance(tokenAta);
+      const tokenBalance = tokenBalInfo.value.amount;
+      const balance = Number.parseFloat(tokenBalance);
+      return balance;
+    } catch (error) {
+      elizaLogger5.error("Error fetching balance", error);
+      return 0;
+    }
+  }
+  /**
+   * Generates and saves trust score based on processed token data and user recommendations.
+   * @param tokenAddress The address of the token to analyze.
+   * @param recommenderId The UUID of the recommender.
+   * @returns An object containing TokenPerformance and RecommenderMetrics.
+   */
+  async generateTrustScore(tokenAddress2, recommenderId, recommenderWallet) {
+    const processedData = await this.tokenProvider.getProcessedTokenData();
+    elizaLogger5.log(
+      `Fetched processed token data for token: ${tokenAddress2}`
+    );
+    const recommenderMetrics = await this.trustScoreDb.getRecommenderMetrics(recommenderId);
+    const isRapidDump = await this.isRapidDump(tokenAddress2);
+    const sustainedGrowth = await this.sustainedGrowth(tokenAddress2);
+    const suspiciousVolume = await this.suspiciousVolume(tokenAddress2);
+    const balance = await this.getRecommenederBalance(recommenderWallet);
+    const virtualConfidence = balance / 1e6;
+    const lastActive = recommenderMetrics.lastActiveDate;
+    const now = /* @__PURE__ */ new Date();
+    const inactiveDays = Math.floor(
+      (now.getTime() - lastActive.getTime()) / (1e3 * 60 * 60 * 24)
+    );
+    const decayFactor = Math.pow(
+      this.DECAY_RATE,
+      Math.min(inactiveDays, this.MAX_DECAY_DAYS)
+    );
+    const decayedScore = recommenderMetrics.trustScore * decayFactor;
+    const validationTrustScore = this.trustScoreDb.calculateValidationTrust(tokenAddress2);
+    return {
+      tokenPerformance: {
+        tokenAddress: processedData.dexScreenerData.pairs[0]?.baseToken.address || "",
+        priceChange24h: processedData.tradeData.price_change_24h_percent,
+        volumeChange24h: processedData.tradeData.volume_24h,
+        trade_24h_change: processedData.tradeData.trade_24h_change_percent,
+        liquidity: processedData.dexScreenerData.pairs[0]?.liquidity.usd || 0,
+        liquidityChange24h: 0,
+        holderChange24h: processedData.tradeData.unique_wallet_24h_change_percent,
+        rugPull: false,
+        isScam: processedData.tokenCodex.isScam,
+        marketCapChange24h: 0,
+        sustainedGrowth,
+        rapidDump: isRapidDump,
+        suspiciousVolume,
+        validationTrust: validationTrustScore,
+        balance,
+        initialMarketCap: processedData.dexScreenerData.pairs[0]?.marketCap || 0,
+        lastUpdated: /* @__PURE__ */ new Date(),
+        symbol: ""
+      },
+      recommenderMetrics: {
+        recommenderId,
+        trustScore: recommenderMetrics.trustScore,
+        totalRecommendations: recommenderMetrics.totalRecommendations,
+        successfulRecs: recommenderMetrics.successfulRecs,
+        avgTokenPerformance: recommenderMetrics.avgTokenPerformance,
+        riskScore: recommenderMetrics.riskScore,
+        consistencyScore: recommenderMetrics.consistencyScore,
+        virtualConfidence,
+        lastActiveDate: now,
+        trustDecay: decayedScore,
+        lastUpdated: /* @__PURE__ */ new Date()
+      }
+    };
+  }
+  async updateRecommenderMetrics(recommenderId, tokenPerformance, recommenderWallet) {
+    const recommenderMetrics = await this.trustScoreDb.getRecommenderMetrics(recommenderId);
+    const totalRecommendations = recommenderMetrics.totalRecommendations + 1;
+    const successfulRecs = tokenPerformance.rugPull ? recommenderMetrics.successfulRecs : recommenderMetrics.successfulRecs + 1;
+    const avgTokenPerformance = (recommenderMetrics.avgTokenPerformance * recommenderMetrics.totalRecommendations + tokenPerformance.priceChange24h) / totalRecommendations;
+    const overallTrustScore = this.calculateTrustScore(
+      tokenPerformance,
+      recommenderMetrics
+    );
+    const riskScore = this.calculateOverallRiskScore(
+      tokenPerformance,
+      recommenderMetrics
+    );
+    const consistencyScore = this.calculateConsistencyScore(
+      tokenPerformance,
+      recommenderMetrics
+    );
+    const balance = await this.getRecommenederBalance(recommenderWallet);
+    const virtualConfidence = balance / 1e6;
+    const lastActive = recommenderMetrics.lastActiveDate;
+    const now = /* @__PURE__ */ new Date();
+    const inactiveDays = Math.floor(
+      (now.getTime() - lastActive.getTime()) / (1e3 * 60 * 60 * 24)
+    );
+    const decayFactor = Math.pow(
+      this.DECAY_RATE,
+      Math.min(inactiveDays, this.MAX_DECAY_DAYS)
+    );
+    const decayedScore = recommenderMetrics.trustScore * decayFactor;
+    const newRecommenderMetrics = {
+      recommenderId,
+      trustScore: overallTrustScore,
+      totalRecommendations,
+      successfulRecs,
+      avgTokenPerformance,
+      riskScore,
+      consistencyScore,
+      virtualConfidence,
+      lastActiveDate: /* @__PURE__ */ new Date(),
+      trustDecay: decayedScore,
+      lastUpdated: /* @__PURE__ */ new Date()
+    };
+    await this.trustScoreDb.updateRecommenderMetrics(newRecommenderMetrics);
+  }
+  calculateTrustScore(tokenPerformance, recommenderMetrics) {
+    const riskScore = this.calculateRiskScore(tokenPerformance);
+    const consistencyScore = this.calculateConsistencyScore(
+      tokenPerformance,
+      recommenderMetrics
+    );
+    return (riskScore + consistencyScore) / 2;
+  }
+  calculateOverallRiskScore(tokenPerformance, recommenderMetrics) {
+    const riskScore = this.calculateRiskScore(tokenPerformance);
+    const consistencyScore = this.calculateConsistencyScore(
+      tokenPerformance,
+      recommenderMetrics
+    );
+    return (riskScore + consistencyScore) / 2;
+  }
+  calculateRiskScore(tokenPerformance) {
+    let riskScore = 0;
+    if (tokenPerformance.rugPull) {
+      riskScore += 10;
+    }
+    if (tokenPerformance.isScam) {
+      riskScore += 10;
+    }
+    if (tokenPerformance.rapidDump) {
+      riskScore += 5;
+    }
+    if (tokenPerformance.suspiciousVolume) {
+      riskScore += 5;
+    }
+    return riskScore;
+  }
+  calculateConsistencyScore(tokenPerformance, recommenderMetrics) {
+    const avgTokenPerformance = recommenderMetrics.avgTokenPerformance;
+    const priceChange24h = tokenPerformance.priceChange24h;
+    return Math.abs(priceChange24h - avgTokenPerformance);
+  }
+  async suspiciousVolume(tokenAddress2) {
+    const processedData = await this.tokenProvider.getProcessedTokenData();
+    const unique_wallet_24h = processedData.tradeData.unique_wallet_24h;
+    const volume_24h = processedData.tradeData.volume_24h;
+    const suspiciousVolume = unique_wallet_24h / volume_24h > 0.5;
+    elizaLogger5.log(
+      `Fetched processed token data for token: ${tokenAddress2}`
+    );
+    return suspiciousVolume;
+  }
+  async sustainedGrowth(tokenAddress2) {
+    const processedData = await this.tokenProvider.getProcessedTokenData();
+    elizaLogger5.log(
+      `Fetched processed token data for token: ${tokenAddress2}`
+    );
+    return processedData.tradeData.volume_24h_change_percent > 50;
+  }
+  async isRapidDump(tokenAddress2) {
+    const processedData = await this.tokenProvider.getProcessedTokenData();
+    elizaLogger5.log(
+      `Fetched processed token data for token: ${tokenAddress2}`
+    );
+    return processedData.tradeData.trade_24h_change_percent < -50;
+  }
+  async checkTrustScore(tokenAddress2) {
+    const processedData = await this.tokenProvider.getProcessedTokenData();
+    elizaLogger5.log(
+      `Fetched processed token data for token: ${tokenAddress2}`
+    );
+    return {
+      ownerBalance: processedData.security.ownerBalance,
+      creatorBalance: processedData.security.creatorBalance,
+      ownerPercentage: processedData.security.ownerPercentage,
+      creatorPercentage: processedData.security.creatorPercentage,
+      top10HolderBalance: processedData.security.top10HolderBalance,
+      top10HolderPercent: processedData.security.top10HolderPercent
+    };
+  }
+  /**
+   * Creates a TradePerformance object based on token data and recommender.
+   * @param tokenAddress The address of the token.
+   * @param recommenderId The UUID of the recommender.
+   * @param data ProcessedTokenData.
+   * @returns TradePerformance object.
+   */
+  async createTradePerformance(runtime, tokenAddress2, recommenderId, data) {
+    const recommender = await this.trustScoreDb.getOrCreateRecommenderWithTelegramId(
+      recommenderId
+    );
+    const processedData = await this.tokenProvider.getProcessedTokenData();
+    const wallet = new WalletProvider(
+      this.connection,
+      new PublicKey4(Wallet)
+    );
+    let tokensBalance = 0;
+    const prices = await wallet.fetchPrices(runtime);
+    const solPrice = prices.solana.usd;
+    const buySol = data.buy_amount / Number.parseFloat(solPrice);
+    const buy_value_usd = data.buy_amount * processedData.tradeData.price;
+    const token = await this.tokenProvider.fetchTokenTradeData();
+    const tokenCodex = await this.tokenProvider.fetchTokenCodex();
+    const tokenPrice = token.price;
+    tokensBalance = buy_value_usd / tokenPrice;
+    const creationData = {
+      token_address: tokenAddress2,
+      recommender_id: recommender.id,
+      buy_price: processedData.tradeData.price,
+      sell_price: 0,
+      buy_timeStamp: (/* @__PURE__ */ new Date()).toISOString(),
+      sell_timeStamp: "",
+      buy_amount: data.buy_amount,
+      sell_amount: 0,
+      buy_sol: buySol,
+      received_sol: 0,
+      buy_value_usd,
+      sell_value_usd: 0,
+      profit_usd: 0,
+      profit_percent: 0,
+      buy_market_cap: processedData.dexScreenerData.pairs[0]?.marketCap || 0,
+      sell_market_cap: 0,
+      market_cap_change: 0,
+      buy_liquidity: processedData.dexScreenerData.pairs[0]?.liquidity.usd || 0,
+      sell_liquidity: 0,
+      liquidity_change: 0,
+      last_updated: (/* @__PURE__ */ new Date()).toISOString(),
+      rapidDump: false
+    };
+    this.trustScoreDb.addTradePerformance(creationData, data.is_simulation);
+    const tokenUUId = v4_default();
+    const tokenRecommendation = {
+      id: tokenUUId,
+      recommenderId,
+      tokenAddress: tokenAddress2,
+      timestamp: /* @__PURE__ */ new Date(),
+      initialMarketCap: processedData.dexScreenerData.pairs[0]?.marketCap || 0,
+      initialLiquidity: processedData.dexScreenerData.pairs[0]?.liquidity?.usd || 0,
+      initialPrice: processedData.tradeData.price
+    };
+    this.trustScoreDb.addTokenRecommendation(tokenRecommendation);
+    this.trustScoreDb.upsertTokenPerformance({
+      tokenAddress: tokenAddress2,
+      symbol: processedData.tokenCodex.symbol,
+      priceChange24h: processedData.tradeData.price_change_24h_percent,
+      volumeChange24h: processedData.tradeData.volume_24h,
+      trade_24h_change: processedData.tradeData.trade_24h_change_percent,
+      liquidity: processedData.dexScreenerData.pairs[0]?.liquidity.usd || 0,
+      liquidityChange24h: 0,
+      holderChange24h: processedData.tradeData.unique_wallet_24h_change_percent,
+      rugPull: false,
+      isScam: tokenCodex.isScam,
+      marketCapChange24h: 0,
+      sustainedGrowth: false,
+      rapidDump: false,
+      suspiciousVolume: false,
+      validationTrust: 0,
+      balance: tokensBalance,
+      initialMarketCap: processedData.dexScreenerData.pairs[0]?.marketCap || 0,
+      lastUpdated: /* @__PURE__ */ new Date()
+    });
+    if (data.is_simulation) {
+      this.trustScoreDb.updateTokenBalance(tokenAddress2, tokensBalance);
+      const hash = Math.random().toString(36).substring(7);
+      const transaction = {
+        tokenAddress: tokenAddress2,
+        type: "buy",
+        transactionHash: hash,
+        amount: data.buy_amount,
+        price: processedData.tradeData.price,
+        isSimulation: true,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      this.trustScoreDb.addTransaction(transaction);
+    }
+    this.simulationSellingService.processTokenPerformance(
+      tokenAddress2,
+      recommenderId
+    );
+    this.createTradeInBe(tokenAddress2, recommenderId, data);
+    return creationData;
+  }
+  async delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  async createTradeInBe(tokenAddress2, recommenderId, data, retries = 3, delayMs = 2e3) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        await fetch(
+          `${this.backend}/api/updaters/createTradePerformance`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.backendToken}`
+            },
+            body: JSON.stringify({
+              tokenAddress: tokenAddress2,
+              tradeData: data,
+              recommenderId
+            })
+          }
+        );
+        return;
+      } catch (error) {
+        elizaLogger5.error(
+          `Attempt ${attempt} failed: Error creating trade in backend`,
+          error
+        );
+        if (attempt < retries) {
+          elizaLogger5.log(`Retrying in ${delayMs} ms...`);
+          await this.delay(delayMs);
+        } else {
+          elizaLogger5.error("All attempts failed.");
+        }
+      }
+    }
+  }
+  /**
+   * Updates a trade with sell details.
+   * @param tokenAddress The address of the token.
+   * @param recommenderId The UUID of the recommender.
+   * @param buyTimeStamp The timestamp when the buy occurred.
+   * @param sellDetails An object containing sell-related details.
+   * @param isSimulation Whether the trade is a simulation. If true, updates in simulation_trade; otherwise, in trade.
+   * @returns boolean indicating success.
+   */
+  async updateSellDetails(runtime, tokenAddress2, recommenderId, sellTimeStamp, sellDetails, isSimulation) {
+    const recommender = await this.trustScoreDb.getOrCreateRecommenderWithTelegramId(
+      recommenderId
+    );
+    const processedData = await this.tokenProvider.getProcessedTokenData();
+    const wallet = new WalletProvider(
+      this.connection,
+      new PublicKey4(Wallet)
+    );
+    const prices = await wallet.fetchPrices(runtime);
+    const solPrice = prices.solana.usd;
+    const sellSol = sellDetails.sell_amount / Number.parseFloat(solPrice);
+    const sell_value_usd = sellDetails.sell_amount * processedData.tradeData.price;
+    const trade = await this.trustScoreDb.getLatestTradePerformance(
+      tokenAddress2,
+      recommender.id,
+      isSimulation
+    );
+    const buyTimeStamp = trade.buy_timeStamp;
+    const marketCap = processedData.dexScreenerData.pairs[0]?.marketCap || 0;
+    const liquidity = processedData.dexScreenerData.pairs[0]?.liquidity.usd || 0;
+    const sell_price = processedData.tradeData.price;
+    const profit_usd = sell_value_usd - trade.buy_value_usd;
+    const profit_percent = profit_usd / trade.buy_value_usd * 100;
+    const market_cap_change = marketCap - trade.buy_market_cap;
+    const liquidity_change = liquidity - trade.buy_liquidity;
+    const isRapidDump = await this.isRapidDump(tokenAddress2);
+    const sellDetailsData = {
+      sell_price,
+      sell_timeStamp: sellTimeStamp,
+      sell_amount: sellDetails.sell_amount,
+      received_sol: sellSol,
+      sell_value_usd,
+      profit_usd,
+      profit_percent,
+      sell_market_cap: marketCap,
+      market_cap_change,
+      sell_liquidity: liquidity,
+      liquidity_change,
+      rapidDump: isRapidDump,
+      sell_recommender_id: sellDetails.sell_recommender_id || null
+    };
+    this.trustScoreDb.updateTradePerformanceOnSell(
+      tokenAddress2,
+      recommender.id,
+      buyTimeStamp,
+      sellDetailsData,
+      isSimulation
+    );
+    if (isSimulation) {
+      const oldBalance = this.trustScoreDb.getTokenBalance(tokenAddress2);
+      const tokenBalance = oldBalance - sellDetails.sell_amount;
+      this.trustScoreDb.updateTokenBalance(tokenAddress2, tokenBalance);
+      const hash = Math.random().toString(36).substring(7);
+      const transaction = {
+        tokenAddress: tokenAddress2,
+        type: "sell",
+        transactionHash: hash,
+        amount: sellDetails.sell_amount,
+        price: processedData.tradeData.price,
+        isSimulation: true,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      this.trustScoreDb.addTransaction(transaction);
+    }
+    return sellDetailsData;
+  }
+  // get all recommendations
+  async getRecommendations(startDate, endDate) {
+    const recommendations = this.trustScoreDb.getRecommendationsByDateRange(
+      startDate,
+      endDate
+    );
+    const groupedRecommendations = recommendations.reduce(
+      (acc, recommendation) => {
+        const { tokenAddress: tokenAddress2 } = recommendation;
+        if (!acc[tokenAddress2]) acc[tokenAddress2] = [];
+        acc[tokenAddress2].push(recommendation);
+        return acc;
+      },
+      {}
+    );
+    const result = Object.keys(groupedRecommendations).map(
+      (tokenAddress2) => {
+        const tokenRecommendations = groupedRecommendations[tokenAddress2];
+        let totalTrustScore = 0;
+        let totalRiskScore = 0;
+        let totalConsistencyScore = 0;
+        const recommenderData = [];
+        tokenRecommendations.forEach((recommendation) => {
+          const tokenPerformance = this.trustScoreDb.getTokenPerformance(
+            recommendation.tokenAddress
+          );
+          const recommenderMetrics = this.trustScoreDb.getRecommenderMetrics(
+            recommendation.recommenderId
+          );
+          const trustScore = this.calculateTrustScore(
+            tokenPerformance,
+            recommenderMetrics
+          );
+          const consistencyScore = this.calculateConsistencyScore(
+            tokenPerformance,
+            recommenderMetrics
+          );
+          const riskScore = this.calculateRiskScore(tokenPerformance);
+          totalTrustScore += trustScore;
+          totalRiskScore += riskScore;
+          totalConsistencyScore += consistencyScore;
+          recommenderData.push({
+            recommenderId: recommendation.recommenderId,
+            trustScore,
+            riskScore,
+            consistencyScore,
+            recommenderMetrics
+          });
+        });
+        const averageTrustScore = totalTrustScore / tokenRecommendations.length;
+        const averageRiskScore = totalRiskScore / tokenRecommendations.length;
+        const averageConsistencyScore = totalConsistencyScore / tokenRecommendations.length;
+        return {
+          tokenAddress: tokenAddress2,
+          averageTrustScore,
+          averageRiskScore,
+          averageConsistencyScore,
+          recommenders: recommenderData
+        };
+      }
+    );
+    result.sort((a, b) => b.averageTrustScore - a.averageTrustScore);
+    return result;
+  }
+};
+var trustScoreProvider = {
+  async get(runtime, message, _state) {
+    try {
+      if (runtime.getSetting("POSTGRES_URL")) {
+        elizaLogger5.warn(
+          "skipping trust evaluator because db is postgres"
+        );
+        return "";
+      }
+      const trustScoreDb = new TrustScoreDatabase(
+        runtime.databaseAdapter.db
+      );
+      const userId = message.userId;
+      if (!userId) {
+        elizaLogger5.error("User ID is missing from the message");
+        return "";
+      }
+      const recommenderMetrics = await trustScoreDb.getRecommenderMetrics(userId);
+      if (!recommenderMetrics) {
+        elizaLogger5.error(
+          "No recommender metrics found for user:",
+          userId
+        );
+        return "";
+      }
+      const trustScore = recommenderMetrics.trustScore;
+      const user = await runtime.databaseAdapter.getAccountById(userId);
+      const trustScoreString = `${user.name}'s trust score: ${trustScore.toFixed(2)}`;
+      return trustScoreString;
+    } catch (error) {
+      elizaLogger5.error("Error in trust score provider:", error.message);
+      return `Failed to fetch trust score: ${error instanceof Error ? error.message : "Unknown error"}`;
+    }
+  }
+};
 
 // src/evaluators/trust.ts
+import {
+  booleanFooter,
+  composeContext,
+  elizaLogger as elizaLogger6,
+  generateObjectArray,
+  generateTrueOrFalse,
+  MemoryManager,
+  ModelClass
+} from "@elizaos/core";
+import { TrustScoreDatabase as TrustScoreDatabase2 } from "@elizaos/plugin-trustdb";
+import { Connection as Connection5 } from "@solana/web3.js";
 var shouldProcessTemplate = `# Task: Decide if the recent messages should be processed for token recommendations.
 
     Look for messages that:
@@ -2713,27 +2397,27 @@ Response should be a JSON object array inside a JSON markdown block. Correct res
 ]
 \`\`\``;
 async function handler(runtime, message) {
-  elizaLogger10.log("Evaluating for trust");
+  elizaLogger6.log("Evaluating for trust");
   const state = await runtime.composeState(message);
   if (runtime.getSetting("POSTGRES_URL")) {
-    elizaLogger10.warn("skipping trust evaluator because db is postgres");
+    elizaLogger6.warn("skipping trust evaluator because db is postgres");
     return [];
   }
   const { agentId, roomId } = state;
-  const shouldProcessContext = composeContext6({
+  const shouldProcessContext = composeContext({
     state,
     template: shouldProcessTemplate
   });
   const shouldProcess = await generateTrueOrFalse({
     context: shouldProcessContext,
-    modelClass: ModelClass6.SMALL,
+    modelClass: ModelClass.SMALL,
     runtime
   });
   if (!shouldProcess) {
-    elizaLogger10.log("Skipping process");
+    elizaLogger6.log("Skipping process");
     return [];
   }
-  elizaLogger10.log("Processing recommendations");
+  elizaLogger6.log("Processing recommendations");
   const recommendationsManager = new MemoryManager({
     runtime,
     tableName: "recommendations"
@@ -2742,7 +2426,7 @@ async function handler(runtime, message) {
     roomId,
     count: 20
   });
-  const context = composeContext6({
+  const context = composeContext({
     state: {
       ...state,
       recentRecommendations: formatRecommendations(recentRecommendations)
@@ -2752,9 +2436,9 @@ async function handler(runtime, message) {
   const recommendations = await generateObjectArray({
     runtime,
     context,
-    modelClass: ModelClass6.LARGE
+    modelClass: ModelClass.LARGE
   });
-  elizaLogger10.log("recommendations", recommendations);
+  elizaLogger6.log("recommendations", recommendations);
   if (!recommendations) {
     return [];
   }
@@ -2764,34 +2448,40 @@ async function handler(runtime, message) {
   const { publicKey } = await getWalletKey(runtime, false);
   for (const rec of filteredRecommendations) {
     const walletProvider2 = new WalletProvider(
-      new Connection9(
+      new Connection5(
         runtime.getSetting("SOLANA_RPC_URL") || "https://api.mainnet-beta.solana.com"
       ),
       publicKey
     );
-    const tokenProvider = new TokenProvider(
+    const tokenProvider2 = new TokenProvider(
       rec.contractAddress,
       walletProvider2,
       runtime.cacheManager
     );
     if (!rec.contractAddress) {
-      const tokenAddress2 = await tokenProvider.getTokenFromWallet(
+      const tokenAddress2 = await tokenProvider2.getTokenFromWallet(
         runtime,
         rec.ticker
       );
       rec.contractAddress = tokenAddress2;
       if (!tokenAddress2) {
-        const result = await tokenProvider.searchDexScreenerData(
+        const result = await tokenProvider2.searchDexScreenerData(
           rec.ticker
         );
         const tokenAddress3 = result?.baseToken?.address;
         rec.contractAddress = tokenAddress3;
         if (!tokenAddress3) {
-          elizaLogger10.warn("Could not find contract address for token");
+          elizaLogger6.warn("Could not find contract address for token");
           continue;
         }
       }
     }
+    const trustScoreDb = new TrustScoreDatabase2(runtime.databaseAdapter.db);
+    const trustScoreManager = new TrustScoreManager(
+      runtime,
+      tokenProvider2,
+      trustScoreDb
+    );
     const participants = await runtime.databaseAdapter.getParticipantsForRoom(
       message.roomId
     );
@@ -2800,7 +2490,7 @@ async function handler(runtime, message) {
       return user2.name.toLowerCase().trim() === rec.recommender.toLowerCase().trim();
     });
     if (!user) {
-      elizaLogger10.warn("Could not find user: ", rec.recommender);
+      elizaLogger6.warn("Could not find user: ", rec.recommender);
       continue;
     }
     const account = await runtime.databaseAdapter.getAccountById(user);
@@ -2813,26 +2503,35 @@ async function handler(runtime, message) {
       createdAt: Date.now()
     };
     await recommendationsManager.createMemory(recMemory, true);
-    elizaLogger10.log("recommendationsManager", rec);
-    const buyAmounts = await tokenProvider.calculateBuyAmounts();
+    elizaLogger6.log("recommendationsManager", rec);
+    const buyAmounts = await tokenProvider2.calculateBuyAmounts();
     let buyAmount = buyAmounts[rec.conviction.toLowerCase().trim()];
     if (!buyAmount) {
       buyAmount = 10;
     }
-    const shouldTrade = await tokenProvider.shouldTradeToken();
+    const shouldTrade = await tokenProvider2.shouldTradeToken();
     if (!shouldTrade) {
-      elizaLogger10.warn(
+      elizaLogger6.warn(
         "There might be a problem with the token, not trading"
       );
       continue;
     }
     switch (rec.type) {
       case "buy":
+        await trustScoreManager.createTradePerformance(
+          runtime,
+          rec.contractAddress,
+          userId,
+          {
+            buy_amount: rec.buyAmount,
+            is_simulation: true
+          }
+        );
         break;
       case "sell":
       case "dont_sell":
       case "dont_buy":
-        elizaLogger10.warn("Not implemented");
+        elizaLogger6.warn("Not implemented");
         break;
     }
   }
@@ -3095,10 +2794,292 @@ None`,
   ]
 };
 
+// src/actions/transfer.ts
+import {
+  getAssociatedTokenAddressSync,
+  createTransferInstruction
+} from "@solana/spl-token";
+import { elizaLogger as elizaLogger7, settings as settings3 } from "@elizaos/core";
+import {
+  Connection as Connection6,
+  PublicKey as PublicKey5,
+  TransactionMessage,
+  VersionedTransaction
+} from "@solana/web3.js";
+import {
+  ModelClass as ModelClass2
+} from "@elizaos/core";
+import { composeContext as composeContext2 } from "@elizaos/core";
+import { generateObjectDeprecated } from "@elizaos/core";
+function isTransferContent(runtime, content) {
+  elizaLogger7.log("Content for transfer", content);
+  return typeof content.tokenAddress === "string" && typeof content.recipient === "string" && (typeof content.amount === "string" || typeof content.amount === "number");
+}
+var transferTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
+
+Example response:
+\`\`\`json
+{
+    "tokenAddress": "BieefG47jAHCGZBxi2q87RDuHyGZyYC3vAzxpyu8pump",
+    "recipient": "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
+    "amount": "1000"
+}
+\`\`\`
+
+{{recentMessages}}
+
+Extract the following information about the requested token transfer:
+- Token contract address
+- Recipient wallet address
+- Amount to transfer
+
+If no token address is mentioned, respond with null.
+`;
+var transfer_default = {
+  name: "SEND_TOKEN",
+  similes: ["TRANSFER_TOKEN", "TRANSFER_TOKENS", "SEND_TOKENS", "PAY_TOKEN", "PAY_TOKENS", "PAY"],
+  validate: async (runtime, message) => {
+    elizaLogger7.log("Validating token transfer from user:", message.userId);
+    return true;
+  },
+  description: "Transfer SPL tokens from agent's wallet to another address",
+  handler: async (runtime, message, state, _options, callback) => {
+    elizaLogger7.log("Starting SEND_TOKEN handler...");
+    if (!state) {
+      state = await runtime.composeState(message);
+    } else {
+      state = await runtime.updateRecentMessageState(state);
+    }
+    const transferContext = composeContext2({
+      state,
+      template: transferTemplate
+    });
+    const content = await generateObjectDeprecated({
+      runtime,
+      context: transferContext,
+      modelClass: ModelClass2.LARGE
+    });
+    if (!isTransferContent(runtime, content)) {
+      if (callback) {
+        callback({
+          text: "Token address needed to send the token.",
+          content: { error: "Invalid transfer content" }
+        });
+      }
+      return false;
+    }
+    try {
+      const { keypair: senderKeypair } = await getWalletKey(runtime, true);
+      const connection3 = new Connection6(settings3.SOLANA_RPC_URL);
+      const mintPubkey = new PublicKey5(content.tokenAddress);
+      const recipientPubkey = new PublicKey5(content.recipient);
+      const mintInfo = await connection3.getParsedAccountInfo(mintPubkey);
+      const decimals = mintInfo.value?.data?.parsed?.info?.decimals ?? 9;
+      const adjustedAmount = BigInt(Number(content.amount) * Math.pow(10, decimals));
+      const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderKeypair.publicKey);
+      const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
+      const instructions = [];
+      const recipientATAInfo = await connection3.getAccountInfo(recipientATA);
+      if (!recipientATAInfo) {
+        const { createAssociatedTokenAccountInstruction } = await import("@solana/spl-token");
+        instructions.push(
+          createAssociatedTokenAccountInstruction(
+            senderKeypair.publicKey,
+            recipientATA,
+            recipientPubkey,
+            mintPubkey
+          )
+        );
+      }
+      instructions.push(
+        createTransferInstruction(
+          senderATA,
+          recipientATA,
+          senderKeypair.publicKey,
+          adjustedAmount
+        )
+      );
+      const messageV0 = new TransactionMessage({
+        payerKey: senderKeypair.publicKey,
+        recentBlockhash: (await connection3.getLatestBlockhash()).blockhash,
+        instructions
+      }).compileToV0Message();
+      const transaction = new VersionedTransaction(messageV0);
+      transaction.sign([senderKeypair]);
+      const signature = await connection3.sendTransaction(transaction);
+      if (callback) {
+        callback({
+          text: `Sent ${content.amount} tokens to ${content.recipient}
+Transaction hash: ${signature}`,
+          content: {
+            success: true,
+            signature,
+            amount: content.amount,
+            recipient: content.recipient
+          }
+        });
+      }
+      return true;
+    } catch (error) {
+      elizaLogger7.error("Error during token transfer:", error);
+      if (callback) {
+        callback({
+          text: `Issue with the transfer: ${error.message}`,
+          content: { error: error.message }
+        });
+      }
+      return false;
+    }
+  },
+  examples: [
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "Send 69 EZSIS BieefG47jAHCGZBxi2q87RDuHyGZyYC3vAzxpyu8pump to 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa"
+        }
+      },
+      {
+        user: "{{user2}}",
+        content: {
+          text: "Sending the tokens now...",
+          action: "SEND_TOKEN"
+        }
+      }
+    ]
+  ]
+};
+
+// src/actions/transfer_sol.ts
+import { elizaLogger as elizaLogger8, settings as settings4 } from "@elizaos/core";
+import {
+  Connection as Connection7,
+  PublicKey as PublicKey6,
+  SystemProgram,
+  TransactionMessage as TransactionMessage2,
+  VersionedTransaction as VersionedTransaction2
+} from "@solana/web3.js";
+import {
+  ModelClass as ModelClass3
+} from "@elizaos/core";
+import { composeContext as composeContext3 } from "@elizaos/core";
+import { generateObjectDeprecated as generateObjectDeprecated2 } from "@elizaos/core";
+function isSolTransferContent(content) {
+  return typeof content.recipient === "string" && typeof content.amount === "number";
+}
+var solTransferTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
+
+Example response:
+\`\`\`json
+{
+    "recipient": "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
+    "amount": 1.5
+}
+\`\`\`
+
+{{recentMessages}}
+
+Extract the following information about the requested SOL transfer:
+- Recipient wallet address
+- Amount of SOL to transfer
+`;
+var transfer_sol_default = {
+  name: "SEND_SOL",
+  similes: ["TRANSFER_SOL", "PAY_SOL", "TRANSACT_SOL"],
+  validate: async (runtime, message) => {
+    elizaLogger8.log("Validating SOL transfer from user:", message.userId);
+    return true;
+  },
+  description: "Transfer native SOL from agent's wallet to specified address",
+  handler: async (runtime, message, state, _options, callback) => {
+    elizaLogger8.log("Starting SEND_SOL handler...");
+    if (!state) {
+      state = await runtime.composeState(message);
+    } else {
+      state = await runtime.updateRecentMessageState(state);
+    }
+    const transferContext = composeContext3({
+      state,
+      template: solTransferTemplate
+    });
+    const content = await generateObjectDeprecated2({
+      runtime,
+      context: transferContext,
+      modelClass: ModelClass3.LARGE
+    });
+    if (!isSolTransferContent(content)) {
+      if (callback) {
+        callback({
+          text: "Need an address and the amount of SOL to send.",
+          content: { error: "Invalid transfer content" }
+        });
+      }
+      return false;
+    }
+    try {
+      const { keypair: senderKeypair } = await getWalletKey(runtime, true);
+      const connection3 = new Connection7(settings4.SOLANA_RPC_URL);
+      const recipientPubkey = new PublicKey6(content.recipient);
+      const lamports = content.amount * 1e9;
+      const instruction = SystemProgram.transfer({
+        fromPubkey: senderKeypair.publicKey,
+        toPubkey: recipientPubkey,
+        lamports
+      });
+      const messageV0 = new TransactionMessage2({
+        payerKey: senderKeypair.publicKey,
+        recentBlockhash: (await connection3.getLatestBlockhash()).blockhash,
+        instructions: [instruction]
+      }).compileToV0Message();
+      const transaction = new VersionedTransaction2(messageV0);
+      transaction.sign([senderKeypair]);
+      const signature = await connection3.sendTransaction(transaction);
+      if (callback) {
+        callback({
+          text: `Sent ${content.amount} SOL. Transaction hash: ${signature}`,
+          content: {
+            success: true,
+            signature,
+            amount: content.amount,
+            recipient: content.recipient
+          }
+        });
+      }
+      return true;
+    } catch (error) {
+      elizaLogger8.error("Error during SOL transfer:", error);
+      if (callback) {
+        callback({
+          text: `Problem with the SOL transfer: ${error.message}`,
+          content: { error: error.message }
+        });
+      }
+      return false;
+    }
+  },
+  examples: [
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "Send 1.5 SOL to 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa"
+        }
+      },
+      {
+        user: "{{user2}}",
+        content: {
+          text: "Sure thing, SOL on its way.",
+          action: "SEND_SOL"
+        }
+      }
+    ]
+  ]
+};
+
 // src/providers/tokenUtils.ts
 import { getAccount, getAssociatedTokenAddress as getAssociatedTokenAddress2 } from "@solana/spl-token";
-import { PublicKey as PublicKey9 } from "@solana/web3.js";
-import { elizaLogger as elizaLogger11 } from "@elizaos/core";
+import { PublicKey as PublicKey7 } from "@solana/web3.js";
+import { elizaLogger as elizaLogger9 } from "@elizaos/core";
 async function getTokenBalance(connection3, walletPublicKey, tokenMintAddress) {
   const tokenAccountAddress = await getAssociatedTokenAddress2(
     tokenMintAddress,
@@ -3109,7 +3090,7 @@ async function getTokenBalance(connection3, walletPublicKey, tokenMintAddress) {
     const tokenAmount = tokenAccount.amount;
     return tokenAmount;
   } catch (error) {
-    elizaLogger11.error(
+    elizaLogger9.error(
       `Error retrieving balance for token: ${tokenMintAddress.toBase58()}`,
       error
     );
@@ -3119,9 +3100,9 @@ async function getTokenBalance(connection3, walletPublicKey, tokenMintAddress) {
 async function getTokenBalances(connection3, walletPublicKey) {
   const tokenBalances = {};
   const tokenMintAddresses = [
-    new PublicKey9("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
+    new PublicKey7("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
     // USDC
-    new PublicKey9("So11111111111111111111111111111111111111112")
+    new PublicKey7("So11111111111111111111111111111111111111112")
     // SOL
     // Add more token mint addresses as needed
   ];
@@ -3145,31 +3126,1204 @@ function getTokenName(mintAddress) {
   return tokenNameMap[mintAddress.toBase58()] || "Unknown Token";
 }
 
+// src/actions/swap.ts
+import {
+  composeContext as composeContext4,
+  generateObjectDeprecated as generateObjectDeprecated3,
+  ModelClass as ModelClass4,
+  settings as settings6,
+  elizaLogger as elizaLogger11
+} from "@elizaos/core";
+import { Connection as Connection9, VersionedTransaction as VersionedTransaction4 } from "@solana/web3.js";
+import BigNumber3 from "bignumber.js";
+
+// src/actions/swapUtils.ts
+import { getAssociatedTokenAddress as getAssociatedTokenAddress3 } from "@solana/spl-token";
+import {
+  Connection as Connection8,
+  PublicKey as PublicKey8,
+  VersionedTransaction as VersionedTransaction3
+} from "@solana/web3.js";
+import { settings as settings5, elizaLogger as elizaLogger10 } from "@elizaos/core";
+var solAddress = settings5.SOL_ADDRESS;
+var SLIPPAGE = settings5.SLIPPAGE;
+var connection2 = new Connection8(
+  settings5.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com"
+);
+async function getTokenDecimals(connection3, mintAddress) {
+  const mintPublicKey = new PublicKey8(mintAddress);
+  const tokenAccountInfo = await connection3.getParsedAccountInfo(mintPublicKey);
+  if (tokenAccountInfo.value && typeof tokenAccountInfo.value.data === "object" && "parsed" in tokenAccountInfo.value.data) {
+    const parsedInfo = tokenAccountInfo.value.data.parsed?.info;
+    if (parsedInfo && typeof parsedInfo.decimals === "number") {
+      return parsedInfo.decimals;
+    }
+  }
+  throw new Error("Unable to fetch token decimals");
+}
+async function getQuote(connection3, baseToken, outputToken, amount) {
+  const decimals = await getTokenDecimals(connection3, baseToken);
+  const adjustedAmount = amount * 10 ** decimals;
+  const quoteResponse = await fetch(
+    `https://quote-api.jup.ag/v6/quote?inputMint=${baseToken}&outputMint=${outputToken}&amount=${adjustedAmount}&slippageBps=50`
+  );
+  const swapTransaction = await quoteResponse.json();
+  const swapTransactionBuf = Buffer.from(swapTransaction, "base64");
+  return new Uint8Array(swapTransactionBuf);
+}
+
+// src/actions/swap.ts
+async function swapToken(connection3, walletPublicKey, inputTokenCA, outputTokenCA, amount) {
+  try {
+    const decimals = inputTokenCA === settings6.SOL_ADDRESS ? new BigNumber3(9) : new BigNumber3(
+      await getTokenDecimals(connection3, inputTokenCA)
+    );
+    elizaLogger11.log("Decimals:", decimals.toString());
+    const amountBN = new BigNumber3(amount);
+    const adjustedAmount = amountBN.multipliedBy(
+      new BigNumber3(10).pow(decimals)
+    );
+    elizaLogger11.log("Fetching quote with params:", {
+      inputMint: inputTokenCA,
+      outputMint: outputTokenCA,
+      amount: adjustedAmount
+    });
+    const quoteResponse = await fetch(
+      `https://quote-api.jup.ag/v6/quote?inputMint=${inputTokenCA}&outputMint=${outputTokenCA}&amount=${adjustedAmount}&dynamicSlippage=true&maxAccounts=64`
+    );
+    const quoteData = await quoteResponse.json();
+    if (!quoteData || quoteData.error) {
+      elizaLogger11.error("Quote error:", quoteData);
+      throw new Error(
+        `Failed to get quote: ${quoteData?.error || "Unknown error"}`
+      );
+    }
+    elizaLogger11.log("Quote received:", quoteData);
+    const swapRequestBody = {
+      quoteResponse: quoteData,
+      userPublicKey: walletPublicKey.toBase58(),
+      dynamicComputeUnitLimit: true,
+      dynamicSlippage: true,
+      priorityLevelWithMaxLamports: {
+        maxLamports: 4e6,
+        priorityLevel: "veryHigh"
+      }
+    };
+    elizaLogger11.log("Requesting swap with body:", swapRequestBody);
+    const swapResponse = await fetch("https://quote-api.jup.ag/v6/swap", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(swapRequestBody)
+    });
+    const swapData = await swapResponse.json();
+    if (!swapData || !swapData.swapTransaction) {
+      elizaLogger11.error("Swap error:", swapData);
+      throw new Error(
+        `Failed to get swap transaction: ${swapData?.error || "No swap transaction returned"}`
+      );
+    }
+    elizaLogger11.log("Swap transaction received");
+    return swapData;
+  } catch (error) {
+    elizaLogger11.error("Error in swapToken:", error);
+    throw error;
+  }
+}
+var swapTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
+
+Example response:
+\`\`\`json
+{
+    "inputTokenSymbol": "SOL",
+    "outputTokenSymbol": "USDC",
+    "inputTokenCA": "So11111111111111111111111111111111111111112",
+    "outputTokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "amount": 1.5
+}
+\`\`\`
+
+{{recentMessages}}
+
+Given the recent messages and wallet information below:
+
+{{walletInfo}}
+
+Extract the following information about the requested token swap:
+- Input token symbol (the token being sold)
+- Output token symbol (the token being bought)
+- Input token contract address if provided
+- Output token contract address if provided
+- Amount to swap
+
+Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined. The result should be a valid JSON object with the following schema:
+\`\`\`json
+{
+    "inputTokenSymbol": string | null,
+    "outputTokenSymbol": string | null,
+    "inputTokenCA": string | null,
+    "outputTokenCA": string | null,
+    "amount": number | string | null
+}
+\`\`\``;
+async function getTokensInWallet(runtime) {
+  const { publicKey } = await getWalletKey(runtime, false);
+  const walletProvider2 = new WalletProvider(
+    new Connection9("https://api.mainnet-beta.solana.com"),
+    publicKey
+  );
+  const walletInfo = await walletProvider2.fetchPortfolioValue(runtime);
+  const items = walletInfo.items;
+  return items;
+}
+async function getTokenFromWallet(runtime, tokenSymbol) {
+  try {
+    const items = await getTokensInWallet(runtime);
+    const token = items.find((item) => item.symbol === tokenSymbol);
+    if (token) {
+      return token.address;
+    } else {
+      return null;
+    }
+  } catch (error) {
+    elizaLogger11.error("Error checking token in wallet:", error);
+    return null;
+  }
+}
+var executeSwap = {
+  name: "EXECUTE_SWAP",
+  similes: ["SWAP_TOKENS", "TOKEN_SWAP", "TRADE_TOKENS", "EXCHANGE_TOKENS"],
+  validate: async (runtime, message) => {
+    elizaLogger11.log("Message:", message);
+    return true;
+  },
+  description: "Perform a token swap.",
+  handler: async (runtime, message, state, _options, callback) => {
+    if (!state) {
+      state = await runtime.composeState(message);
+    } else {
+      state = await runtime.updateRecentMessageState(state);
+    }
+    const walletInfo = await walletProvider.get(runtime, message, state);
+    state.walletInfo = walletInfo;
+    const swapContext = composeContext4({
+      state,
+      template: swapTemplate
+    });
+    const response = await generateObjectDeprecated3({
+      runtime,
+      context: swapContext,
+      modelClass: ModelClass4.LARGE
+    });
+    elizaLogger11.log("Response:", response);
+    if (response.inputTokenSymbol?.toUpperCase() === "SOL") {
+      response.inputTokenCA = settings6.SOL_ADDRESS;
+    }
+    if (response.outputTokenSymbol?.toUpperCase() === "SOL") {
+      response.outputTokenCA = settings6.SOL_ADDRESS;
+    }
+    if (!response.inputTokenCA && response.inputTokenSymbol) {
+      elizaLogger11.log(
+        `Attempting to resolve CA for input token symbol: ${response.inputTokenSymbol}`
+      );
+      response.inputTokenCA = await getTokenFromWallet(
+        runtime,
+        response.inputTokenSymbol
+      );
+      if (response.inputTokenCA) {
+        elizaLogger11.log(
+          `Resolved inputTokenCA: ${response.inputTokenCA}`
+        );
+      } else {
+        elizaLogger11.log(
+          "No contract addresses provided, skipping swap"
+        );
+        const responseMsg = {
+          text: "I need the contract addresses to perform the swap"
+        };
+        callback?.(responseMsg);
+        return true;
+      }
+    }
+    if (!response.outputTokenCA && response.outputTokenSymbol) {
+      elizaLogger11.log(
+        `Attempting to resolve CA for output token symbol: ${response.outputTokenSymbol}`
+      );
+      response.outputTokenCA = await getTokenFromWallet(
+        runtime,
+        response.outputTokenSymbol
+      );
+      if (response.outputTokenCA) {
+        elizaLogger11.log(
+          `Resolved outputTokenCA: ${response.outputTokenCA}`
+        );
+      } else {
+        elizaLogger11.log(
+          "No contract addresses provided, skipping swap"
+        );
+        const responseMsg = {
+          text: "I need the contract addresses to perform the swap"
+        };
+        callback?.(responseMsg);
+        return true;
+      }
+    }
+    if (!response.amount) {
+      elizaLogger11.log("No amount provided, skipping swap");
+      const responseMsg = {
+        text: "I need the amount to perform the swap"
+      };
+      callback?.(responseMsg);
+      return true;
+    }
+    if (!response.amount) {
+      elizaLogger11.log("Amount is not a number, skipping swap");
+      const responseMsg = {
+        text: "The amount must be a number"
+      };
+      callback?.(responseMsg);
+      return true;
+    }
+    try {
+      const connection3 = new Connection9(
+        "https://api.mainnet-beta.solana.com"
+      );
+      const { publicKey: walletPublicKey } = await getWalletKey(
+        runtime,
+        false
+      );
+      elizaLogger11.log("Wallet Public Key:", walletPublicKey);
+      elizaLogger11.log("inputTokenSymbol:", response.inputTokenCA);
+      elizaLogger11.log("outputTokenSymbol:", response.outputTokenCA);
+      elizaLogger11.log("amount:", response.amount);
+      const swapResult = await swapToken(
+        connection3,
+        walletPublicKey,
+        response.inputTokenCA,
+        response.outputTokenCA,
+        response.amount
+      );
+      elizaLogger11.log("Deserializing transaction...");
+      const transactionBuf = Buffer.from(
+        swapResult.swapTransaction,
+        "base64"
+      );
+      const transaction = VersionedTransaction4.deserialize(transactionBuf);
+      elizaLogger11.log("Preparing to sign transaction...");
+      elizaLogger11.log("Creating keypair...");
+      const { keypair } = await getWalletKey(runtime, true);
+      if (keypair.publicKey.toBase58() !== walletPublicKey.toBase58()) {
+        throw new Error(
+          "Generated public key doesn't match expected public key"
+        );
+      }
+      elizaLogger11.log("Signing transaction...");
+      transaction.sign([keypair]);
+      elizaLogger11.log("Sending transaction...");
+      const latestBlockhash = await connection3.getLatestBlockhash();
+      const txid = await connection3.sendTransaction(transaction, {
+        skipPreflight: false,
+        maxRetries: 3,
+        preflightCommitment: "confirmed"
+      });
+      elizaLogger11.log("Transaction sent:", txid);
+      const confirmation = await connection3.confirmTransaction(
+        {
+          signature: txid,
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight
+        },
+        "confirmed"
+      );
+      if (confirmation.value.err) {
+        throw new Error(
+          `Transaction failed: ${confirmation.value.err}`
+        );
+      }
+      if (confirmation.value.err) {
+        throw new Error(
+          `Transaction failed: ${confirmation.value.err}`
+        );
+      }
+      elizaLogger11.log("Swap completed successfully!");
+      elizaLogger11.log(`Transaction ID: ${txid}`);
+      const responseMsg = {
+        text: `Swap completed successfully! Transaction ID: ${txid}`
+      };
+      callback?.(responseMsg);
+      return true;
+    } catch (error) {
+      elizaLogger11.error("Error during token swap:", error);
+      return false;
+    }
+  },
+  examples: [
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          inputTokenSymbol: "SOL",
+          outputTokenSymbol: "USDC",
+          amount: 0.1
+        }
+      },
+      {
+        user: "{{user2}}",
+        content: {
+          text: "Swapping 0.1 SOL for USDC...",
+          action: "TOKEN_SWAP"
+        }
+      },
+      {
+        user: "{{user2}}",
+        content: {
+          text: "Swap completed successfully! Transaction ID: ..."
+        }
+      }
+    ]
+    // Add more examples as needed
+  ]
+};
+
+// src/actions/takeOrder.ts
+import {
+  ModelClass as ModelClass5,
+  composeContext as composeContext5,
+  generateText
+} from "@elizaos/core";
+var take_order = {
+  name: "TAKE_ORDER",
+  similes: ["BUY_ORDER", "PLACE_ORDER"],
+  description: "Records a buy order based on the user's conviction level.",
+  examples: [],
+  validate: async (runtime, message) => {
+    const text = message.content.text;
+    const tickerRegex = /\b[A-Z]{1,5}\b/g;
+    return tickerRegex.test(text);
+  },
+  handler: async (runtime, message) => {
+    const _text = message.content.text;
+    const userId = message.userId;
+    const template = `
+
+// CLAUDE TODO: Put the usual conversation context here
+
+Ticker is: {{ticker}}
+Contract address is: {{contractAddress}}
+
+Determine if the user is trying to shill the ticker. if they are, respond with empty conviction, ticker and contractAddress.
+
+// CLAUDE TODO: output a JSON block with the following fields:
+// - reasoning: string
+// - conviction: negative, low, medium, high
+// - ticker: string (extract from CA so we have context)
+// - contractAddress: string
+`;
+    let ticker, contractAddress;
+    if (!ticker || !contractAddress) {
+      return {
+        text: "Ticker and CA?"
+      };
+    }
+    const state = await runtime.composeState(message);
+    const context = composeContext5({
+      state: {
+        ...state,
+        ticker,
+        contractAddress
+      },
+      template
+    });
+    const convictionResponse = await generateText({
+      runtime,
+      context,
+      modelClass: ModelClass5.LARGE
+    });
+    const convictionResponseJson = JSON.parse(convictionResponse);
+    const conviction = convictionResponseJson.conviction;
+    let buyAmount = 0;
+    if (conviction === "low") {
+      buyAmount = 20;
+    } else if (conviction === "medium") {
+      buyAmount = 50;
+    } else if (conviction === "high") {
+      buyAmount = 100;
+    }
+    const currentPrice = 100;
+    const order = {
+      userId,
+      ticker: ticker || "",
+      contractAddress,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      buyAmount,
+      price: currentPrice
+    };
+    const orderBookPath = runtime.getSetting("orderBookPath") ?? "solana/orderBook.json";
+    const orderBook = [];
+    const cachedOrderBook = await runtime.cacheManager.get(orderBookPath);
+    if (cachedOrderBook) {
+      orderBook.push(...cachedOrderBook);
+    }
+    orderBook.push(order);
+    await runtime.cacheManager.set(orderBookPath, orderBook);
+    return {
+      text: `Recorded a ${conviction} conviction buy order for ${ticker} (${contractAddress}) with an amount of ${buyAmount} at the price of ${currentPrice}.`
+    };
+  }
+};
+var takeOrder_default = take_order;
+
+// src/actions/pumpfun.ts
+import { generateImage, elizaLogger as elizaLogger12 } from "@elizaos/core";
+import { Connection as Connection10, Keypair as Keypair2 } from "@solana/web3.js";
+import { VersionedTransaction as VersionedTransaction5 } from "@solana/web3.js";
+import { Fomo } from "fomo-sdk-solana";
+import { getAssociatedTokenAddressSync as getAssociatedTokenAddressSync2 } from "@solana/spl-token";
+import bs582 from "bs58";
+import {
+  settings as settings7,
+  ModelClass as ModelClass6,
+  generateObject,
+  composeContext as composeContext6
+} from "@elizaos/core";
+function isCreateAndBuyContentForFomo(content) {
+  elizaLogger12.log("Content for create & buy", content);
+  return typeof content.tokenMetadata === "object" && content.tokenMetadata !== null && typeof content.tokenMetadata.name === "string" && typeof content.tokenMetadata.symbol === "string" && typeof content.tokenMetadata.description === "string" && typeof content.tokenMetadata.image_description === "string" && (typeof content.buyAmountSol === "string" || typeof content.buyAmountSol === "number") && typeof content.requiredLiquidity === "number";
+}
+var createAndBuyToken = async ({
+  deployer,
+  mint,
+  tokenMetadata,
+  buyAmountSol,
+  priorityFee,
+  requiredLiquidity = 85,
+  allowOffCurve,
+  commitment = "confirmed",
+  fomo,
+  connection: connection3
+}) => {
+  const { transaction: versionedTx } = await fomo.createToken(
+    deployer.publicKey,
+    tokenMetadata.name,
+    tokenMetadata.symbol,
+    tokenMetadata.uri,
+    priorityFee,
+    bs582.encode(mint.secretKey),
+    requiredLiquidity,
+    Number(buyAmountSol) / 10 ** 9
+  );
+  const { blockhash, lastValidBlockHeight } = await connection3.getLatestBlockhash();
+  versionedTx.message.recentBlockhash = blockhash;
+  versionedTx.sign([mint]);
+  const serializedTransaction = versionedTx.serialize();
+  const serializedTransactionBase64 = Buffer.from(
+    serializedTransaction
+  ).toString("base64");
+  const deserializedTx = VersionedTransaction5.deserialize(
+    Buffer.from(serializedTransactionBase64, "base64")
+  );
+  const txid = await connection3.sendTransaction(deserializedTx, {
+    skipPreflight: false,
+    maxRetries: 3,
+    preflightCommitment: "confirmed"
+  });
+  elizaLogger12.log("Transaction sent:", txid);
+  const confirmation = await connection3.confirmTransaction(
+    {
+      signature: txid,
+      blockhash,
+      lastValidBlockHeight
+    },
+    commitment
+  );
+  if (!confirmation.value.err) {
+    elizaLogger12.log(
+      "Success:",
+      `https://fomo.fund/token/${mint.publicKey.toBase58()}`
+    );
+    const ata = getAssociatedTokenAddressSync2(
+      mint.publicKey,
+      deployer.publicKey,
+      allowOffCurve
+    );
+    const balance = await connection3.getTokenAccountBalance(
+      ata,
+      "processed"
+    );
+    const amount = balance.value.uiAmount;
+    if (amount === null) {
+      elizaLogger12.log(
+        `${deployer.publicKey.toBase58()}:`,
+        "No Account Found"
+      );
+    } else {
+      elizaLogger12.log(`${deployer.publicKey.toBase58()}:`, amount);
+    }
+    return {
+      success: true,
+      ca: mint.publicKey.toBase58(),
+      creator: deployer.publicKey.toBase58()
+    };
+  } else {
+    elizaLogger12.log("Create and Buy failed");
+    return {
+      success: false,
+      ca: mint.publicKey.toBase58(),
+      error: confirmation.value.err || "Transaction failed"
+    };
+  }
+};
+var promptConfirmation = async () => {
+  return true;
+};
+var fomoTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
+
+Example response:
+\`\`\`json
+{
+    "tokenMetadata": {
+        "name": "Test Token",
+        "symbol": "TEST",
+        "description": "A test token",
+        "image_description": "create an image of a rabbit"
+    },
+    "buyAmountSol": "0.00069",
+    "requiredLiquidity": "85"
+}
+\`\`\`
+
+{{recentMessages}}
+
+Given the recent messages, extract or generate (come up with if not included) the following information about the requested token creation:
+- Token name
+- Token symbol
+- Token description
+- Token image description
+- Amount of SOL to buy
+
+Respond with a JSON markdown block containing only the extracted values.`;
+var pumpfun_default = {
+  name: "CREATE_AND_BUY_TOKEN",
+  similes: ["CREATE_AND_PURCHASE_TOKEN", "DEPLOY_AND_BUY_TOKEN"],
+  validate: async (_runtime, _message) => {
+    return true;
+  },
+  description: "Create a new token and buy a specified amount using SOL. Requires deployer private key, token metadata, buy amount in SOL, priority fee, and allowOffCurve flag.",
+  handler: async (runtime, message, state, _options, callback) => {
+    elizaLogger12.log("Starting CREATE_AND_BUY_TOKEN handler...");
+    if (!state) {
+      state = await runtime.composeState(message);
+    } else {
+      state = await runtime.updateRecentMessageState(state);
+    }
+    const walletInfo = await walletProvider.get(runtime, message, state);
+    state.walletInfo = walletInfo;
+    const pumpContext = composeContext6({
+      state,
+      template: fomoTemplate
+    });
+    const content = await generateObject({
+      runtime,
+      context: pumpContext,
+      modelClass: ModelClass6.LARGE
+    });
+    if (!isCreateAndBuyContentForFomo(content)) {
+      elizaLogger12.error(
+        "Invalid content for CREATE_AND_BUY_TOKEN action."
+      );
+      return false;
+    }
+    const { tokenMetadata, buyAmountSol, requiredLiquidity } = content;
+    const imageResult = await generateImage(
+      {
+        prompt: `logo for ${tokenMetadata.name} (${tokenMetadata.symbol}) token - ${tokenMetadata.description}`,
+        width: 256,
+        height: 256,
+        count: 1
+      },
+      runtime
+    );
+    const imageBuffer = Buffer.from(imageResult.data[0], "base64");
+    const formData = new FormData();
+    const blob = new Blob([imageBuffer], { type: "image/png" });
+    formData.append("file", blob, `${tokenMetadata.name}.png`);
+    formData.append("name", tokenMetadata.name);
+    formData.append("symbol", tokenMetadata.symbol);
+    formData.append("description", tokenMetadata.description);
+    const metadataResponse = await fetch("https://pump.fun/api/ipfs", {
+      method: "POST",
+      body: formData
+    });
+    const metadataResponseJSON = await metadataResponse.json();
+    const fullTokenMetadata = {
+      name: tokenMetadata.name,
+      symbol: tokenMetadata.symbol,
+      uri: metadataResponseJSON.metadataUri
+    };
+    const priorityFee = {
+      unitLimit: 1e8,
+      unitPrice: 1e5
+    };
+    const slippage = "2000";
+    try {
+      const privateKeyString = runtime.getSetting("SOLANA_PRIVATE_KEY") ?? runtime.getSetting("WALLET_PRIVATE_KEY");
+      const secretKey = bs582.decode(privateKeyString);
+      const deployerKeypair = Keypair2.fromSecretKey(secretKey);
+      const mintKeypair = Keypair2.generate();
+      elizaLogger12.log(
+        `Generated mint address: ${mintKeypair.publicKey.toBase58()}`
+      );
+      const connection3 = new Connection10(settings7.SOLANA_RPC_URL, {
+        commitment: "confirmed",
+        confirmTransactionInitialTimeout: 5e5,
+        wsEndpoint: settings7.SOLANA_RPC_URL.replace("https", "wss")
+      });
+      const sdk = new Fomo(connection3, "devnet", deployerKeypair);
+      const createAndBuyConfirmation = await promptConfirmation();
+      if (!createAndBuyConfirmation) {
+        elizaLogger12.log("Create and buy token canceled by user");
+        return false;
+      }
+      const lamports = Math.floor(Number(buyAmountSol) * 1e9);
+      elizaLogger12.log("Executing create and buy transaction...");
+      const result = await createAndBuyToken({
+        deployer: deployerKeypair,
+        mint: mintKeypair,
+        tokenMetadata: fullTokenMetadata,
+        buyAmountSol: BigInt(lamports),
+        priorityFee: priorityFee.unitPrice,
+        requiredLiquidity: Number(requiredLiquidity),
+        allowOffCurve: false,
+        fomo: sdk,
+        connection: connection3,
+        slippage
+      });
+      if (callback) {
+        if (result.success) {
+          callback({
+            text: `Token ${tokenMetadata.name} (${tokenMetadata.symbol}) created successfully!
+URL: https://fomo.fund/token/${result.ca}
+Creator: ${result.creator}
+View at: https://fomo.fund/token/${result.ca}`,
+            content: {
+              tokenInfo: {
+                symbol: tokenMetadata.symbol,
+                address: result.ca,
+                creator: result.creator,
+                name: tokenMetadata.name,
+                description: tokenMetadata.description,
+                timestamp: Date.now()
+              }
+            }
+          });
+        } else {
+          callback({
+            text: `Failed to create token: ${result.error}
+Attempted mint address: ${result.ca}`,
+            content: {
+              error: result.error,
+              mintAddress: result.ca
+            }
+          });
+        }
+      }
+      const successMessage = `Token created and purchased successfully! View at: https://fomo.fund/token/${mintKeypair.publicKey.toBase58()}`;
+      elizaLogger12.log(successMessage);
+      return result.success;
+    } catch (error) {
+      if (callback) {
+        callback({
+          text: `Error during token creation: ${error.message}`,
+          content: { error: error.message }
+        });
+      }
+      return false;
+    }
+  },
+  examples: [
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "Create a new token called GLITCHIZA with symbol GLITCHIZA and generate a description about it on fomo.fund. Also come up with a description for it to use for image generation .buy 0.00069 SOL worth."
+        }
+      },
+      {
+        user: "{{user2}}",
+        content: {
+          text: "Token GLITCHIZA (GLITCHIZA) created successfully on fomo.fund!\nURL: https://fomo.fund/token/673247855e8012181f941f84\nCreator: Anonymous\nView at: https://fomo.fund/token/673247855e8012181f941f84",
+          action: "CREATE_AND_BUY_TOKEN",
+          content: {
+            tokenInfo: {
+              symbol: "GLITCHIZA",
+              address: "EugPwuZ8oUMWsYHeBGERWvELfLGFmA1taDtmY8uMeX6r",
+              creator: "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
+              name: "GLITCHIZA",
+              description: "A GLITCHIZA token"
+            }
+          }
+        }
+      }
+    ]
+  ]
+};
+
+// src/actions/fomo.ts
+import { generateImage as generateImage2, elizaLogger as elizaLogger13 } from "@elizaos/core";
+import {
+  Connection as Connection11,
+  Keypair as Keypair3,
+  VersionedTransaction as VersionedTransaction6
+} from "@solana/web3.js";
+import { Fomo as Fomo2 } from "fomo-sdk-solana";
+import { getAssociatedTokenAddressSync as getAssociatedTokenAddressSync3 } from "@solana/spl-token";
+import bs583 from "bs58";
+import {
+  settings as settings8,
+  ModelClass as ModelClass7,
+  generateObject as generateObject2,
+  composeContext as composeContext7
+} from "@elizaos/core";
+function isCreateAndBuyContentForFomo2(content) {
+  elizaLogger13.log("Content for create & buy", content);
+  return typeof content.tokenMetadata === "object" && content.tokenMetadata !== null && typeof content.tokenMetadata.name === "string" && typeof content.tokenMetadata.symbol === "string" && typeof content.tokenMetadata.description === "string" && typeof content.tokenMetadata.image_description === "string" && (typeof content.buyAmountSol === "string" || typeof content.buyAmountSol === "number") && typeof content.requiredLiquidity === "number";
+}
+var createAndBuyToken2 = async ({
+  deployer,
+  mint,
+  tokenMetadata,
+  buyAmountSol,
+  priorityFee,
+  requiredLiquidity = 85,
+  allowOffCurve,
+  commitment = "confirmed",
+  fomo,
+  connection: connection3
+}) => {
+  const { transaction: versionedTx } = await fomo.createToken(
+    deployer.publicKey,
+    tokenMetadata.name,
+    tokenMetadata.symbol,
+    tokenMetadata.uri,
+    priorityFee,
+    bs583.encode(mint.secretKey),
+    requiredLiquidity,
+    Number(buyAmountSol) / 10 ** 9
+  );
+  const { blockhash, lastValidBlockHeight } = await connection3.getLatestBlockhash();
+  versionedTx.message.recentBlockhash = blockhash;
+  versionedTx.sign([mint]);
+  const serializedTransaction = versionedTx.serialize();
+  const serializedTransactionBase64 = Buffer.from(
+    serializedTransaction
+  ).toString("base64");
+  const deserializedTx = VersionedTransaction6.deserialize(
+    Buffer.from(serializedTransactionBase64, "base64")
+  );
+  const txid = await connection3.sendTransaction(deserializedTx, {
+    skipPreflight: false,
+    maxRetries: 3,
+    preflightCommitment: "confirmed"
+  });
+  elizaLogger13.log("Transaction sent:", txid);
+  const confirmation = await connection3.confirmTransaction(
+    {
+      signature: txid,
+      blockhash,
+      lastValidBlockHeight
+    },
+    commitment
+  );
+  if (!confirmation.value.err) {
+    elizaLogger13.log(
+      "Success:",
+      `https://fomo.fund/token/${mint.publicKey.toBase58()}`
+    );
+    const ata = getAssociatedTokenAddressSync3(
+      mint.publicKey,
+      deployer.publicKey,
+      allowOffCurve
+    );
+    const balance = await connection3.getTokenAccountBalance(
+      ata,
+      "processed"
+    );
+    const amount = balance.value.uiAmount;
+    if (amount === null) {
+      elizaLogger13.log(
+        `${deployer.publicKey.toBase58()}:`,
+        "No Account Found"
+      );
+    } else {
+      elizaLogger13.log(`${deployer.publicKey.toBase58()}:`, amount);
+    }
+    return {
+      success: true,
+      ca: mint.publicKey.toBase58(),
+      creator: deployer.publicKey.toBase58()
+    };
+  } else {
+    elizaLogger13.log("Create and Buy failed");
+    return {
+      success: false,
+      ca: mint.publicKey.toBase58(),
+      error: confirmation.value.err || "Transaction failed"
+    };
+  }
+};
+var promptConfirmation2 = async () => {
+  return true;
+};
+var fomoTemplate2 = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
+
+Example response:
+\`\`\`json
+{
+    "tokenMetadata": {
+        "name": "Test Token",
+        "symbol": "TEST",
+        "description": "A test token",
+        "image_description": "create an image of a rabbit"
+    },
+    "buyAmountSol": "0.00069",
+    "requiredLiquidity": "85"
+}
+\`\`\`
+
+{{recentMessages}}
+
+Given the recent messages, extract or generate (come up with if not included) the following information about the requested token creation:
+- Token name
+- Token symbol
+- Token description
+- Token image description
+- Amount of SOL to buy
+
+Respond with a JSON markdown block containing only the extracted values.`;
+var fomo_default = {
+  name: "CREATE_AND_BUY_TOKEN",
+  similes: ["CREATE_AND_PURCHASE_TOKEN", "DEPLOY_AND_BUY_TOKEN"],
+  validate: async (_runtime, _message) => {
+    return true;
+  },
+  description: "Create a new token and buy a specified amount using SOL. Requires deployer private key, token metadata, buy amount in SOL, priority fee, and allowOffCurve flag.",
+  handler: async (runtime, message, state, _options, callback) => {
+    elizaLogger13.log("Starting CREATE_AND_BUY_TOKEN handler...");
+    if (!state) {
+      state = await runtime.composeState(message);
+    } else {
+      state = await runtime.updateRecentMessageState(state);
+    }
+    const walletInfo = await walletProvider.get(runtime, message, state);
+    state.walletInfo = walletInfo;
+    const pumpContext = composeContext7({
+      state,
+      template: fomoTemplate2
+    });
+    const content = await generateObject2({
+      runtime,
+      context: pumpContext,
+      modelClass: ModelClass7.LARGE
+    });
+    if (!isCreateAndBuyContentForFomo2(content)) {
+      elizaLogger13.error(
+        "Invalid content for CREATE_AND_BUY_TOKEN action."
+      );
+      return false;
+    }
+    const { tokenMetadata, buyAmountSol, requiredLiquidity } = content;
+    const imageResult = await generateImage2(
+      {
+        prompt: `logo for ${tokenMetadata.name} (${tokenMetadata.symbol}) token - ${tokenMetadata.description}`,
+        width: 256,
+        height: 256,
+        count: 1
+      },
+      runtime
+    );
+    const imageBuffer = Buffer.from(imageResult.data[0], "base64");
+    const formData = new FormData();
+    const blob = new Blob([imageBuffer], { type: "image/png" });
+    formData.append("file", blob, `${tokenMetadata.name}.png`);
+    formData.append("name", tokenMetadata.name);
+    formData.append("symbol", tokenMetadata.symbol);
+    formData.append("description", tokenMetadata.description);
+    const metadataResponse = await fetch("https://pump.fun/api/ipfs", {
+      method: "POST",
+      body: formData
+    });
+    const metadataResponseJSON = await metadataResponse.json();
+    const fullTokenMetadata = {
+      name: tokenMetadata.name,
+      symbol: tokenMetadata.symbol,
+      uri: metadataResponseJSON.metadataUri
+    };
+    const priorityFee = {
+      unitLimit: 1e8,
+      unitPrice: 1e5
+    };
+    const slippage = "2000";
+    try {
+      const privateKeyString = runtime.getSetting("SOLANA_PRIVATE_KEY") ?? runtime.getSetting("WALLET_PRIVATE_KEY");
+      const secretKey = bs583.decode(privateKeyString);
+      const deployerKeypair = Keypair3.fromSecretKey(secretKey);
+      const mintKeypair = Keypair3.generate();
+      elizaLogger13.log(
+        `Generated mint address: ${mintKeypair.publicKey.toBase58()}`
+      );
+      const connection3 = new Connection11(settings8.SOLANA_RPC_URL, {
+        commitment: "confirmed",
+        confirmTransactionInitialTimeout: 5e5,
+        // 120 seconds
+        wsEndpoint: settings8.SOLANA_RPC_URL.replace("https", "wss")
+      });
+      const sdk = new Fomo2(connection3, "devnet", deployerKeypair);
+      const createAndBuyConfirmation = await promptConfirmation2();
+      if (!createAndBuyConfirmation) {
+        elizaLogger13.log("Create and buy token canceled by user");
+        return false;
+      }
+      const lamports = Math.floor(Number(buyAmountSol) * 1e9);
+      elizaLogger13.log("Executing create and buy transaction...");
+      const result = await createAndBuyToken2({
+        deployer: deployerKeypair,
+        mint: mintKeypair,
+        tokenMetadata: fullTokenMetadata,
+        buyAmountSol: BigInt(lamports),
+        priorityFee: priorityFee.unitPrice,
+        requiredLiquidity: Number(requiredLiquidity),
+        allowOffCurve: false,
+        fomo: sdk,
+        connection: connection3,
+        slippage
+      });
+      if (callback) {
+        if (result.success) {
+          callback({
+            text: `Token ${tokenMetadata.name} (${tokenMetadata.symbol}) created successfully!
+URL: https://fomo.fund/token/${result.ca}
+Creator: ${result.creator}
+View at: https://fomo.fund/token/${result.ca}`,
+            content: {
+              tokenInfo: {
+                symbol: tokenMetadata.symbol,
+                address: result.ca,
+                creator: result.creator,
+                name: tokenMetadata.name,
+                description: tokenMetadata.description,
+                timestamp: Date.now()
+              }
+            }
+          });
+        } else {
+          callback({
+            text: `Failed to create token: ${result.error}
+Attempted mint address: ${result.ca}`,
+            content: {
+              error: result.error,
+              mintAddress: result.ca
+            }
+          });
+        }
+      }
+      const successMessage = `Token created and purchased successfully! View at: https://fomo.fund/token/${mintKeypair.publicKey.toBase58()}`;
+      elizaLogger13.log(successMessage);
+      return result.success;
+    } catch (error) {
+      if (callback) {
+        callback({
+          text: `Error during token creation: ${error.message}`,
+          content: { error: error.message }
+        });
+      }
+      return false;
+    }
+  },
+  examples: [
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "Create a new token called GLITCHIZA with symbol GLITCHIZA and generate a description about it on fomo.fund. Also come up with a description for it to use for image generation .buy 0.00069 SOL worth."
+        }
+      },
+      {
+        user: "{{user2}}",
+        content: {
+          text: "Token GLITCHIZA (GLITCHIZA) created successfully on fomo.fund!\nURL: https://fomo.fund/token/673247855e8012181f941f84\nCreator: Anonymous\nView at: https://fomo.fund/token/673247855e8012181f941f84",
+          action: "CREATE_AND_BUY_TOKEN",
+          content: {
+            tokenInfo: {
+              symbol: "GLITCHIZA",
+              address: "EugPwuZ8oUMWsYHeBGERWvELfLGFmA1taDtmY8uMeX6r",
+              creator: "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
+              name: "GLITCHIZA",
+              description: "A GLITCHIZA token"
+            }
+          }
+        }
+      }
+    ]
+  ]
+};
+
+// src/actions/swapDao.ts
+import {
+  elizaLogger as elizaLogger14
+} from "@elizaos/core";
+import { Connection as Connection12, PublicKey as PublicKey9, Transaction } from "@solana/web3.js";
+async function invokeSwapDao(connection3, authority, statePDA, walletPDA, instructionData) {
+  const discriminator = new Uint8Array([
+    25,
+    143,
+    207,
+    190,
+    174,
+    228,
+    130,
+    107
+  ]);
+  const combinedData = new Uint8Array(
+    discriminator.length + instructionData.length
+  );
+  combinedData.set(discriminator, 0);
+  combinedData.set(instructionData, discriminator.length);
+  const transaction = new Transaction().add({
+    programId: new PublicKey9("PROGRAM_ID"),
+    keys: [
+      { pubkey: authority.publicKey, isSigner: true, isWritable: true },
+      { pubkey: statePDA, isSigner: false, isWritable: true },
+      { pubkey: walletPDA, isSigner: false, isWritable: true }
+    ],
+    data: Buffer.from(combinedData)
+  });
+  const signature = await connection3.sendTransaction(transaction, [
+    authority
+  ]);
+  await connection3.confirmTransaction(signature);
+  return signature;
+}
+async function promptConfirmation3() {
+  const confirmSwap = window.confirm("Confirm the token swap?");
+  return confirmSwap;
+}
+var executeSwapForDAO = {
+  name: "EXECUTE_SWAP_DAO",
+  similes: ["SWAP_TOKENS_DAO", "TOKEN_SWAP_DAO"],
+  validate: async (runtime, message) => {
+    elizaLogger14.log("Message:", message);
+    return true;
+  },
+  description: "Perform a DAO token swap using execute_invoke.",
+  handler: async (runtime, message) => {
+    const { inputToken, outputToken, amount } = message.content;
+    try {
+      const connection3 = new Connection12(
+        runtime.getSetting("SOLANA_RPC_URL")
+      );
+      const { keypair: authority } = await getWalletKey(runtime, true);
+      const daoMint = new PublicKey9(runtime.getSetting("DAO_MINT"));
+      const [statePDA] = await PublicKey9.findProgramAddress(
+        [Buffer.from("state"), daoMint.toBuffer()],
+        authority.publicKey
+      );
+      const [walletPDA] = await PublicKey9.findProgramAddress(
+        [Buffer.from("wallet"), daoMint.toBuffer()],
+        authority.publicKey
+      );
+      const quoteData = await getQuote(
+        connection3,
+        inputToken,
+        outputToken,
+        amount
+      );
+      elizaLogger14.log("Swap Quote:", quoteData);
+      const confirmSwap = await promptConfirmation3();
+      if (!confirmSwap) {
+        elizaLogger14.log("Swap canceled by user");
+        return false;
+      }
+      const instructionData = Buffer.from(
+        JSON.stringify({
+          quote: quoteData.data,
+          userPublicKey: authority.publicKey.toString(),
+          wrapAndUnwrapSol: true
+        })
+      );
+      const txid = await invokeSwapDao(
+        connection3,
+        authority,
+        statePDA,
+        walletPDA,
+        instructionData
+      );
+      elizaLogger14.log("DAO Swap completed successfully!");
+      elizaLogger14.log(`Transaction ID: ${txid}`);
+      return true;
+    } catch (error) {
+      elizaLogger14.error("Error during DAO token swap:", error);
+      return false;
+    }
+  },
+  examples: [
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          inputTokenSymbol: "SOL",
+          outputTokenSymbol: "USDC",
+          inputToken: "So11111111111111111111111111111111111111112",
+          outputToken: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          amount: 0.1
+        }
+      },
+      {
+        user: "{{user2}}",
+        content: {
+          text: "Swapping 0.1 SOL for USDC using DAO...",
+          action: "TOKEN_SWAP_DAO"
+        }
+      },
+      {
+        user: "{{user2}}",
+        content: {
+          text: "DAO Swap completed successfully! Transaction ID: ..."
+        }
+      }
+    ]
+  ]
+};
+
 // src/index.ts
 var solanaPlugin = {
   name: "solana",
   description: "Solana Plugin for Eliza",
   actions: [
+    transfer_default,
+    transfer_sol_default,
     executeSwap,
     pumpfun_default,
     fomo_default,
-    transfer_default,
     executeSwapForDAO,
     takeOrder_default
   ],
   evaluators: [trustEvaluator],
-  providers: [
-    walletProvider
-    /*, trustScoreProvider*/
-  ]
+  providers: [walletProvider, trustScoreProvider]
 };
 var index_default = solanaPlugin;
 export {
   TokenProvider,
+  TrustScoreManager,
   WalletProvider,
   index_default as default,
+  formatRecommendations,
   getTokenBalance,
   getTokenBalances,
-  solanaPlugin
+  solanaPlugin,
+  tokenProvider,
+  trustEvaluator,
+  trustScoreProvider,
+  walletProvider
 };
 //# sourceMappingURL=index.js.map
