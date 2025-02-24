@@ -20,8 +20,11 @@
     ],
     "dependencies": {
         "@coral-xyz/anchor": "0.30.1",
-        "@elizaos/plugin-tee": "workspace:*",
-        "@elizaos/plugin-trustdb": "workspace:*",
+        "@elizaos/core": "0.25.8",
+        "@elizaos/plugin-tee": "^0.25.6-alpha.1",
+        "@elizaos/plugin-trustdb": "^0.25.6-alpha.1",
+        "@marinade.finance/marinade-ts-sdk": "^4.0.2",
+        "@solana/spl-stake-pool": "1.1.8",
         "@solana/spl-token": "0.4.9",
         "@solana/web3.js": "npm:@solana/web3.js@1.95.8",
         "bignumber.js": "9.1.2",
@@ -31,7 +34,8 @@
         "pumpdotfun-sdk": "1.3.2",
         "solana-agent-kit": "^1.4.0",
         "tsup": "8.3.5",
-        "vitest": "2.1.9"
+        "vitest": "2.1.9",
+        "zod": "^3.24.2"
     },
     "devDependencies": {
         "@biomejs/biome": "1.5.3",
