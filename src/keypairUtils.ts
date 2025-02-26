@@ -1,5 +1,5 @@
 import { Keypair, PublicKey } from "@solana/web3.js";
-import { DeriveKeyProvider, TEEMode } from "@elizaos/plugin-tee";
+import { DeriveKeyProvider, TEEMode } from "@elizaos-plugins/plugin-tee";
 import bs58 from "bs58";
 import { type IAgentRuntime, elizaLogger } from "@elizaos/core";
 
