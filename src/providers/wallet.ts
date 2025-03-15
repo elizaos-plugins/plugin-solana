@@ -12,7 +12,7 @@ import { getWalletKey } from "../keypairUtils";
 
 // Provider configuration
 const PROVIDER_CONFIG = {
-    BIRDEYE_API: "https://public-api.birdeye.so",
+    BIRDEYE_API: "https://docs.birdeye.so/",
     MAX_RETRIES: 3,
     RETRY_DELAY: 2000,
     DEFAULT_RPC: "https://api.mainnet-beta.solana.com",
