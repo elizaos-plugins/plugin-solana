@@ -1,101 +1,51 @@
 {
-    "name": "@elizaos-plugins/plugin-solana",
-    "version": "0.1.9",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "@elizaos/source": "./src/index.ts",
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@coral-xyz/anchor": "0.30.1",
-        "@elizaos/plugin-tee": "workspace:*",
-        "@elizaos/plugin-trustdb": "workspace:*",
-        "@solana/spl-token": "0.4.9",
-        "@solana/web3.js": "npm:@solana/web3.js@1.95.8",
-        "bignumber.js": "9.1.2",
-        "bs58": "6.0.0",
-        "fomo-sdk-solana": "1.3.2",
-        "node-cache": "5.1.2",
-        "pumpdotfun-sdk": "1.3.2",
-        "solana-agent-kit": "^1.4.0",
-        "tsup": "8.3.5",
-        "vitest": "2.1.9"
-    },
-    "devDependencies": {
-        "@biomejs/biome": "1.5.3",
-        "tsup": "^8.3.5"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "lint": "biome check src/",
-        "lint:fix": "biome check --apply src/",
-        "format": "biome format src/",
-        "format:fix": "biome format --write src/",
-        "test": "vitest run"
-    },
-    "peerDependencies": {
-        "form-data": "4.0.1",
-        "whatwg-url": "7.1.0"
-    },
-    "agentConfig": {
-        "pluginType": "elizaos:plugin:1.0.0",
-        "pluginParameters": {
-            "WALLET_SECRET_KEY": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Wallet secret key is required",
-                "optional": true
-            },
-            "WALLET_PUBLIC_KEY": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Wallet public key is required",
-                "optional": true
-            },
-            "WALLET_SECRET_SALT": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Wallet secret salt is required",
-                "optional": true
-            },
-            "SOL_ADDRESS": {
-                "type": "string",
-                "minLength": 1,
-                "description": "SOL address is required"
-            },
-            "SLIPPAGE": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Slippage is required"
-            },
-            "SOLANA_RPC_URL": {
-                "type": "string",
-                "minLength": 1,
-                "description": "RPC URL is required"
-            },
-            "HELIUS_API_KEY": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Helius API key is required"
-            },
-            "BIRDEYE_API_KEY": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Birdeye API key is required"
-            }
-        }
+  "name": "@elizaos-plugins/plugin-solana",
+  "version": "1.0.0-beta.48",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-solana"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.0.0-beta.48",
+    "@solana/spl-token": "0.4.9",
+    "@solana/web3.js": "^1.98.0",
+    "bignumber.js": "9.1.2",
+    "bs58": "6.0.0",
+    "vitest": "2.1.9"
+  },
+  "devDependencies": {
+    "prettier": "3.5.3",
+    "tsup": "8.4.0",
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "peerDependencies": {
+    "form-data": "4.0.2",
+    "whatwg-url": "7.1.0"
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
 }
