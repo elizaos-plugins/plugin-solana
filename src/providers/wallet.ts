@@ -1,7 +1,7 @@
 import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
-import { logger } from '@sentry/browser';
+import { logger } from '@elizaos/core';
 import BigNumber from 'bignumber.js';
-import { SOLANA_WALLET_DATA_CACHE_KEY } from '../../../plugin-solana/src/constants';
+import { SOLANA_WALLET_DATA_CACHE_KEY } from '../constants';
 import { getWalletKey } from '../keypairUtils';
 import type { WalletPortfolio } from '../types';
 
