@@ -1,8 +1,8 @@
-import type { Plugin } from '@elizaos/core';
+import type { IAgentRuntime, Plugin } from '@elizaos/core';
 import { executeSwap } from './actions/swap';
 import transferToken from './actions/transfer';
 import { SOLANA_SERVICE_NAME } from './constants';
-import { walletProvider } from '../../plugin-solana-local/src/providers/wallet';
+import { walletProvider } from './providers/wallet';
 import { SolanaService } from './service';
 
 export const solanaPlugin: Plugin = {

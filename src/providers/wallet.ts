@@ -1,6 +1,8 @@
 import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
-import BigNumber from 'src/bignumber.js';
+import { logger } from '@sentry/browser';
+import BigNumber from 'bignumber.js';
 import { SOLANA_WALLET_DATA_CACHE_KEY } from '../../../plugin-solana/src/constants';
+import { getWalletKey } from '../keypairUtils';
 import type { WalletPortfolio } from '../types';
 
 // Define the ProviderResult interface if not already imported
@@ -42,18 +44,21 @@ export const walletProvider: Provider = {
       // hard coding service name, ugh
       const solanaService = runtime.getService('solana');
       let pubkeyStr = '';
+
+      const { publicKey } = await getWalletKey(runtime, false);
+
       // why wouldn't this exist? it's in the same plugin...
       if (solanaService) {
-        pubkeyStr = ' (' + solanaService.publicKey.toBase58() + ')';
+        pubkeyStr = ' (' + publicKey?.toBase58() + ')';
       }
 
-      const portfolio = portfolioCache;
+      const portfolio = portfolioCache as WalletPortfolio;
       const agentName = state?.agentName || runtime.character.name || 'The agent';
 
       // Values that can be injected into templates
       const values: Record<string, string> = {
         total_usd: new BigNumber(portfolio.totalUsd).toFixed(2),
-        total_sol: portfolio.totalSol.toString(),
+        total_sol: portfolio.totalSol?.toString() || '0',
       };
 
       // Add token balances to values
@@ -63,7 +68,7 @@ export const walletProvider: Provider = {
           values[`token_${index}_symbol`] = item.symbol;
           values[`token_${index}_amount`] = new BigNumber(item.uiAmount).toFixed(6);
           values[`token_${index}_usd`] = new BigNumber(item.valueUsd).toFixed(2);
-          values[`token_${index}_sol`] = item.valueSol.toString();
+          values[`token_${index}_sol`] = item.valueSol?.toString() || '0';
         }
       });
 
