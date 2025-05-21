@@ -81,7 +81,9 @@ async function swapToken(
     const quoteResponse = await fetch(
       `https://quote-api.jup.ag/v6/quote?inputMint=${inputTokenCA}&outputMint=${outputTokenCA}&amount=${adjustedAmount}&dynamicSlippage=true&maxAccounts=64`
     );
-    const quoteData = await quoteResponse.json();
+    const quoteData = (await quoteResponse.json()) as {
+      error?: string;
+    };
 
     if (!quoteData || quoteData.error) {
       logger.error('Quote error:', quoteData);
@@ -105,7 +107,10 @@ async function swapToken(
       body: JSON.stringify(swapRequestBody),
     });
 
-    const swapData = await swapResponse.json();
+    const swapData = (await swapResponse.json()) as {
+      error?: string;
+      swapTransaction?: string;
+    };
 
     if (!swapData || !swapData.swapTransaction) {
       logger.error('Swap error:', swapData);
@@ -242,8 +247,8 @@ export const executeSwap: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: { [key: string]: unknown },
+    state: State | undefined,
+    _options: { [key: string]: unknown } | undefined,
     callback?: HandlerCallback
   ): Promise<boolean> => {
     state = await runtime.composeState(message, ['RECENT_MESSAGES']);
@@ -266,7 +271,13 @@ export const executeSwap: Action = {
         prompt: swapPrompt,
       });
 
-      const response = parseJSONObjectFromText(result);
+      const response = parseJSONObjectFromText(result) as {
+        inputTokenSymbol?: string;
+        outputTokenSymbol?: string;
+        inputTokenCA?: string;
+        outputTokenCA?: string;
+        amount?: number;
+      };
 
       // Handle SOL addresses
       if (response.inputTokenSymbol?.toUpperCase() === 'SOL') {
@@ -278,7 +289,8 @@ export const executeSwap: Action = {
 
       // Resolve token addresses if needed
       if (!response.inputTokenCA && response.inputTokenSymbol) {
-        response.inputTokenCA = await getTokenFromWallet(runtime, response.inputTokenSymbol);
+        response.inputTokenCA =
+          (await getTokenFromWallet(runtime, response.inputTokenSymbol)) || undefined;
         if (!response.inputTokenCA) {
           callback?.({ text: 'Could not find the input token in your wallet' });
           return false;
@@ -286,7 +298,8 @@ export const executeSwap: Action = {
       }
 
       if (!response.outputTokenCA && response.outputTokenSymbol) {
-        response.outputTokenCA = await getTokenFromWallet(runtime, response.outputTokenSymbol);
+        response.outputTokenCA =
+          (await getTokenFromWallet(runtime, response.outputTokenSymbol)) || undefined;
         if (!response.outputTokenCA) {
           callback?.({
             text: 'Could not find the output token in your wallet',
@@ -307,7 +320,7 @@ export const executeSwap: Action = {
 
       const swapResult = (await swapToken(
         connection,
-        walletPublicKey,
+        walletPublicKey as PublicKey,
         response.inputTokenCA as string,
         response.outputTokenCA as string,
         response.amount as number
@@ -317,11 +330,15 @@ export const executeSwap: Action = {
       const transaction = VersionedTransaction.deserialize(transactionBuf);
 
       const { keypair } = await getWalletKey(runtime, true);
-      if (keypair.publicKey.toBase58() !== walletPublicKey.toBase58()) {
+      if (keypair?.publicKey.toBase58() !== walletPublicKey?.toBase58()) {
         throw new Error("Generated public key doesn't match expected public key");
       }
 
-      transaction.sign([keypair]);
+      if (keypair) {
+        transaction.sign([keypair]);
+      } else {
+        throw new Error('Keypair not found');
+      }
 
       const latestBlockhash = await connection.getLatestBlockhash();
       const txid = await connection.sendTransaction(transaction, {
@@ -350,12 +367,15 @@ export const executeSwap: Action = {
 
       return true;
     } catch (error) {
-      logger.error('Error during token swap:', error);
-      callback?.({
-        text: `Swap failed: ${error.message}`,
-        content: { error: error.message },
-      });
-      return false;
+      if (error instanceof Error) {
+        logger.error('Error during token swap:', error);
+        callback?.({
+          text: `Swap failed: ${error.message}`,
+          content: { error: error.message },
+        });
+        return false;
+      }
+      throw error;
     }
   },
   examples: [
