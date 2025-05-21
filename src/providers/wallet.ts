@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
-import BigNumber from 'bignumber.js';
-import { SOLANA_WALLET_DATA_CACHE_KEY } from '../constants';
+import BigNumber from 'src/bignumber.js';
+import { SOLANA_WALLET_DATA_CACHE_KEY } from '../../../plugin-solana/src/constants';
 import type { WalletPortfolio } from '../types';
 
 // Define the ProviderResult interface if not already imported
@@ -33,7 +33,9 @@ export const walletProvider: Provider = {
   get: async (runtime: IAgentRuntime, _message: Memory, state?: State): Promise<ProviderResult> => {
     try {
       const portfolioCache = await runtime.getCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY);
+      //console.log('portfolioCache', portfolioCache)
       if (!portfolioCache) {
+        logger.info('solana::wallet provider - portfolioCache is not ready');
         return { data: null, values: {}, text: '' };
       }
 

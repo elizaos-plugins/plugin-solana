@@ -11,7 +11,7 @@ import {
   parseJSONObjectFromText,
 } from '@elizaos/core';
 import { Connection, PublicKey, VersionedTransaction } from '@solana/web3.js';
-import BigNumber from 'bignumber.js';
+import BigNumber from 'src/bignumber.js';
 import { SOLANA_SERVICE_NAME } from '../constants';
 import { getWalletKey } from '../keypairUtils';
 import type { SolanaService } from '../service';

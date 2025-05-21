@@ -1,4 +1,4 @@
-import BigNumber from 'bignumber.js';
+import BigNumber from 'src/bignumber.js';
 
 // Re-export BigNumber constructor
 export const BN = BigNumber;
